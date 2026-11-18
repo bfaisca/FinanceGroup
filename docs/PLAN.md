@@ -13,7 +13,8 @@ Entregas incrementais, cada etapa testada e integrada antes da próxima. Status:
 | Infra | Dockerfile API | Dockerfile + Nginx (proxy `/api`) |
 | Testes | Unitários (validação, tokens), integração (fluxos de auth com PostgreSQL) | Stores, serviço HTTP, formulários de auth |
 
-## Etapa 2 — Controle financeiro individual ⬜
+## Etapa 2 — Controle financeiro individual 🟡
+Contratos: `API_CONTRACTS.md` §6–9 · Regras: `STATE_MACHINE.md`, D-014, D-019–D-023. Inclui também a rotina de exclusão de dados individuais (D-014).
 Contas + snapshots + saldo projetado; categorias (seed padrão, personalizadas, subcategorias); movimentações (CRUD, filtros, auditoria); pagamentos parciais/integrais e máquina de estados; dashboard individual.
 
 ## Etapa 3 — Recursos financeiros ⬜
@@ -26,5 +27,4 @@ Grupos, convites por token (hash), participantes (saída preserva histórico), m
 Ampliação de testes, revisão de segurança, responsividade, acessibilidade, documentação final.
 
 ## Pendências de decisão
-- D-014: regra de exclusão dos dados individuais na exclusão de conta (confirmar antes da Etapa 2).
 - Alteração de e-mail do perfil (D-013) — fora do escopo até autorização.
