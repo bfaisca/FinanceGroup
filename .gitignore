@@ -1,0 +1,26 @@
+# Ambiente / segredos
+.env
+.env.*
+!.env.example
+*.pfx
+appsettings.*.local.json
+
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+.vs/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.local
+
+# IDE / SO
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

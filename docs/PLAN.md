@@ -1,0 +1,30 @@
+# Plano de implementação
+
+Entregas incrementais, cada etapa testada e integrada antes da próxima. Status: ⬜ não iniciada · 🟡 em andamento · ✅ concluída.
+
+## Etapa 1 — Fundação ✅
+> Validada: build, 92 testes backend (62 unit + 30 integração PostgreSQL), 59 testes frontend, E2E via proxy (cadastro, login, refresh por cookie, logout, esqueci/redefinir com SMTP real). **Pendente:** executar `docker compose up --build` em máquina com Docker.
+| Item | Backend | Frontend |
+|---|---|---|
+| Estrutura | Solução Clean Architecture, DI, Serilog, ProblemDetails, Swagger, health | Vite + Vue 3 + TS, PrimeVue, Router, Pinia, Axios, layouts |
+| Banco | EF Core + Npgsql, migration inicial (`users`, `refresh_tokens`, `password_reset_tokens`) | — |
+| Autenticação | Cadastro, login, refresh com rotação, logout, esqueci/redefinir senha (SMTP), rate limit | Telas de login, cadastro, esqueci/redefinir senha; guards de rota; refresh automático |
+| Perfil | `GET/PUT /users/me`, troca de senha, exclusão de conta | Tela de Configurações (perfil, senha, excluir conta) |
+| Infra | Dockerfile API | Dockerfile + Nginx (proxy `/api`) |
+| Testes | Unitários (validação, tokens), integração (fluxos de auth com PostgreSQL) | Stores, serviço HTTP, formulários de auth |
+
+## Etapa 2 — Controle financeiro individual ⬜
+Contas + snapshots + saldo projetado; categorias (seed padrão, personalizadas, subcategorias); movimentações (CRUD, filtros, auditoria); pagamentos parciais/integrais e máquina de estados; dashboard individual.
+
+## Etapa 3 — Recursos financeiros ⬜
+Cartões (regra D-003); parcelamentos (distribuição de centavos na última parcela); recorrências (horizonte D-010, idempotência); relatórios.
+
+## Etapa 4 — Grupos ⬜
+Grupos, convites por token (hash), participantes (saída preserva histórico), movimentações compartilhadas (DTO sem dados privados), dashboard consolidado (participação por autor **e** por pagador, separadas).
+
+## Etapa 5 — Qualidade ⬜
+Ampliação de testes, revisão de segurança, responsividade, acessibilidade, documentação final.
+
+## Pendências de decisão
+- D-014: regra de exclusão dos dados individuais na exclusão de conta (confirmar antes da Etapa 2).
+- Alteração de e-mail do perfil (D-013) — fora do escopo até autorização.

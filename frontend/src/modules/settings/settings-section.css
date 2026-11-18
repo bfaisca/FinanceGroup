@@ -1,0 +1,23 @@
+.settings-section__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.settings-section__description {
+  margin: 0.375rem 0 1.25rem;
+  color: var(--gf-text-muted);
+}
+
+.settings-section__meta {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--gf-text-muted);
+}
+
+.settings-danger {
+  border-color: color-mix(in srgb, var(--gf-danger) 45%, var(--gf-border));
+}
+
+.settings-danger .settings-section__title {
+  color: var(--gf-danger);
+}

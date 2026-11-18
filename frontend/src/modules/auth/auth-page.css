@@ -1,0 +1,21 @@
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.auth-page__header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.auth-page__header p {
+  margin: 0.375rem 0 0;
+  color: var(--gf-text-muted);
+}
+
+.auth-page__alt {
+  margin: 0;
+  text-align: center;
+  color: var(--gf-text-muted);
+}
