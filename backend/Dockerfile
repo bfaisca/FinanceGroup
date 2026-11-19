@@ -20,8 +20,9 @@ RUN dotnet publish src/FinanceApp.API/FinanceApp.API.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 
 # curl é usado pelo healthcheck do docker-compose (GET /health).
+# tzdata é necessário para resolver App__TimeZone (ex.: America/Sao_Paulo, D-021).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

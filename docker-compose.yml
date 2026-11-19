@@ -46,6 +46,7 @@ services:
       Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-15}
       Jwt__RefreshTokenDays: ${JWT_REFRESH_TOKEN_DAYS:-7}
       App__FrontendBaseUrl: ${FRONTEND_BASE_URL:-http://localhost:8080}
+      App__TimeZone: ${APP_TIMEZONE:-America/Sao_Paulo}
       Cors__AllowedOrigins__0: ${FRONTEND_BASE_URL:-http://localhost:8080}
       Smtp__Host: ${SMTP_HOST:-mailpit}
       Smtp__Port: ${SMTP_PORT:-1025}

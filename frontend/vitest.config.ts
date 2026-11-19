@@ -9,6 +9,7 @@ export default defineConfig((env) =>
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),
       restoreMocks: true,
+      setupFiles: ['./src/test/setup.ts'],
     },
   }),
 )

@@ -120,3 +120,42 @@ a {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Tokens semânticos adicionais (contraste AA sobre o fundo de cartões em claro e escuro). */
+:root {
+  --gf-warning: var(--p-amber-800);
+  --gf-info: var(--p-blue-700);
+  --gf-neutral: var(--p-surface-600);
+}
+
+:root.app-dark {
+  --gf-warning: var(--p-amber-300);
+  --gf-info: var(--p-blue-300);
+  --gf-neutral: var(--p-surface-300);
+}
+
+/* Utilitários de layout reutilizados pelos módulos. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.money--income {
+  color: var(--gf-success);
+}
+
+.money--expense {
+  color: var(--gf-danger);
+}

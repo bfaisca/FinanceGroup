@@ -22,6 +22,93 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("FinanceApp.Domain.Accounts.Account", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Institution")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("institution");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_accounts");
+
+                    b.HasIndex("UserId", "IsActive")
+                        .HasDatabaseName("ix_accounts_user_id_is_active");
+
+                    b.ToTable("accounts", (string)null);
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Accounts.AccountBalanceSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("balance");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("ReferenceDate")
+                        .HasColumnType("date")
+                        .HasColumnName("reference_date");
+
+                    b.HasKey("Id")
+                        .HasName("pk_account_balance_snapshots");
+
+                    b.HasIndex("AccountId", "ReferenceDate", "CreatedAt")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_account_balance_snapshots_account_id_reference_date_created");
+
+                    b.ToTable("account_balance_snapshots", (string)null);
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Auth.PasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -137,6 +224,438 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.ToTable("refresh_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Categories.Category", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("color");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("icon");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("ParentCategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_category_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("type");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_categories");
+
+                    b.HasIndex("ParentCategoryId")
+                        .HasDatabaseName("ix_categories_parent_category_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_categories_user_id");
+
+                    b.ToTable("categories", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_categories_default_without_user", "(NOT is_default) OR user_id IS NULL");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000001"),
+                            Color = "#F97316",
+                            Icon = "pi-shopping-cart",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Alimentação",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000002"),
+                            Color = "#EF4444",
+                            Icon = "pi-heart",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Saúde",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000003"),
+                            Color = "#3B82F6",
+                            Icon = "pi-book",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Educação",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000004"),
+                            Color = "#A855F7",
+                            Icon = "pi-ticket",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Lazer",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000005"),
+                            Color = "#6366F1",
+                            Icon = "pi-sync",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Assinaturas",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000006"),
+                            Color = "#14B8A6",
+                            Icon = "pi-home",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Moradia",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000007"),
+                            Color = "#EAB308",
+                            Icon = "pi-car",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Transporte",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000008"),
+                            Color = "#EC4899",
+                            Icon = "pi-shopping-bag",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Compras",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0001-000000000009"),
+                            Color = "#64748B",
+                            Icon = "pi-ellipsis-h",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Outros",
+                            Type = "Expense"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0002-000000000001"),
+                            Color = "#22C55E",
+                            Icon = "pi-wallet",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Salário",
+                            Type = "Income"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0002-000000000002"),
+                            Color = "#0EA5E9",
+                            Icon = "pi-briefcase",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Freelance",
+                            Type = "Income"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0002-000000000003"),
+                            Color = "#10B981",
+                            Icon = "pi-chart-line",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Investimentos",
+                            Type = "Income"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0002-000000000004"),
+                            Color = "#84CC16",
+                            Icon = "pi-replay",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Reembolsos",
+                            Type = "Income"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0002-000000000005"),
+                            Color = "#64748B",
+                            Icon = "pi-ellipsis-h",
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Outros",
+                            Type = "Income"
+                        });
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<decimal>("PaidAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("paid_amount");
+
+                    b.Property<DateOnly?>("PaidAt")
+                        .HasColumnType("date")
+                        .HasColumnName("paid_at");
+
+                    b.Property<Guid?>("PaidByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("paid_by_user_id");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("payment_method");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateOnly>("TransactionDate")
+                        .HasColumnType("date")
+                        .HasColumnName("transaction_date");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_transactions");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_transactions_account_id");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_transactions_category_id");
+
+                    b.HasIndex("PaidByUserId")
+                        .HasDatabaseName("ix_transactions_paid_by_user_id");
+
+                    b.HasIndex("CreatedByUserId", "DueDate")
+                        .HasDatabaseName("ix_transactions_created_by_user_id_due_date_open")
+                        .HasFilter("status IN ('Planned','Pending')");
+
+                    b.HasIndex("CreatedByUserId", "TransactionDate")
+                        .HasDatabaseName("ix_transactions_created_by_user_id_transaction_date");
+
+                    b.ToTable("transactions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_transactions_amount_positive", "amount > 0");
+
+                            t.HasCheckConstraint("ck_transactions_due_date_after_date", "due_date IS NULL OR due_date >= transaction_date");
+
+                            t.HasCheckConstraint("ck_transactions_paid_amount_range", "paid_amount >= 0 AND paid_amount <= amount");
+
+                            t.HasCheckConstraint("ck_transactions_status_settlement", "status IN ('Planned','Pending','Paid','Received','Canceled') AND (status = 'Canceled' OR ((status IN ('Paid','Received')) = (paid_amount = amount))) AND (status <> 'Paid' OR type = 'Expense') AND (status <> 'Received' OR type = 'Income') AND (paid_at IS NULL OR status IN ('Paid','Received')) AND (paid_by_user_id IS NULL OR status IN ('Paid','Received'))");
+                        });
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Transactions.TransactionAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("action");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Field")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("field");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("new_value");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("old_value");
+
+                    b.Property<long>("Sequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sequence");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Sequence"));
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transaction_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_transaction_audit_entries");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_transaction_audit_entries_user_id");
+
+                    b.HasIndex("TransactionId", "CreatedAt")
+                        .HasDatabaseName("ix_transaction_audit_entries_transaction_id_created_at");
+
+                    b.ToTable("transaction_audit_entries", (string)null);
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Transactions.TransactionPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateOnly>("PaymentDate")
+                        .HasColumnType("date")
+                        .HasColumnName("payment_date");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("payment_method");
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transaction_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_transaction_payments");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_transaction_payments_account_id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_transaction_payments_created_by_user_id");
+
+                    b.HasIndex("TransactionId")
+                        .HasDatabaseName("ix_transaction_payments_transaction_id");
+
+                    b.ToTable("transaction_payments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_transaction_payments_amount_positive", "amount > 0");
+                        });
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -183,6 +702,26 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Accounts.Account", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_accounts_users_user_id");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Accounts.AccountBalanceSnapshot", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_account_balance_snapshots_accounts_account_id");
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Auth.PasswordResetToken", b =>
                 {
                     b.HasOne("FinanceApp.Domain.Users.User", null)
@@ -201,6 +740,105 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Categories.Category", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Categories.Category", "ParentCategory")
+                        .WithMany()
+                        .HasForeignKey("ParentCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_categories_categories_parent_category_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_categories_users_user_id");
+
+                    b.Navigation("ParentCategory");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_accounts_account_id");
+
+                    b.HasOne("FinanceApp.Domain.Categories.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transactions_categories_category_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transactions_users_created_by_user_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("PaidByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_users_paid_by_user_id");
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Transactions.TransactionAuditEntry", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Transactions.Transaction", null)
+                        .WithMany("AuditEntries")
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_transaction_audit_entries_transactions_transaction_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transaction_audit_entries_users_user_id");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Transactions.TransactionPayment", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transaction_payments_accounts_account_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transaction_payments_users_created_by_user_id");
+
+                    b.HasOne("FinanceApp.Domain.Transactions.Transaction", null)
+                        .WithMany("Payments")
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_transaction_payments_transactions_transaction_id");
+
+                    b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>
+                {
+                    b.Navigation("AuditEntries");
+
+                    b.Navigation("Payments");
                 });
 #pragma warning restore 612, 618
         }

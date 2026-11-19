@@ -97,3 +97,9 @@ Categorias padrão (`userId = null`, `isDefault = true`) são criadas por migrat
 
 ## D-023 — Tipo e valor da movimentação — Técnica
 `type` não pode ser alterado depois de criada. O `amount` não pode ficar abaixo do total já pago. Pagamentos não podem ultrapassar o valor da movimentação nem ter data futura.
+
+## D-024 — `paid_amount` denormalizado e histórico com nomes — Técnica
+- `transactions.paid_amount` é mantido exclusivamente pelo domínio (soma dos pagamentos) e protegido por constraints (`0 <= paid_amount <= amount`, coerência com o status). Facilita as agregações do dashboard sem junções.
+- O histórico (`transaction_audit_entries`) grava, para `category` e `account`, o **nome** vigente na época (não o id), e pagamentos no formato `"200.00 (2026-11-18)"` (campo `payment`). O frontend interpreta esse formato.
+- Ids de categoria, conta ou categoria-pai inexistentes/de outro usuário **no corpo** → `400 validation_error` (não vaza existência); `404` fica para ids na rota.
+- Projeção (D-019): movimentações na **mesma data** do snapshot não entram (o saldo informado vale para o fim do dia).

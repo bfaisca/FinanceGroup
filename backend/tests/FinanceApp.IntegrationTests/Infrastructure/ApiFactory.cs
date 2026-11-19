@@ -37,6 +37,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public FakeEmailSender Emails { get; } = new();
 
+    /// <summary>Relógio de teste: tempo real por padrão; <see cref="TestClock.TodayOverride"/> fixa "hoje" (D-021).</summary>
+    public TestClock Clock { get; } = new();
+
     /// <summary>Configurações extras aplicadas por cima das padrões de teste (ex.: rate limiting).</summary>
     public Dictionary<string, string?> ExtraSettings { get; } = [];
 
@@ -98,8 +101,30 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(Emails);
+            services.RemoveAll<IDateTimeProvider>();
+            services.AddSingleton<IDateTimeProvider>(Clock);
         });
     }
+}
+
+/// <summary>Tempo real (UTC), com "hoje" opcionalmente fixado para testes determinísticos.</summary>
+public sealed class TestClock : IDateTimeProvider
+{
+    private static readonly TimeZoneInfo SaoPaulo = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+
+    /// <summary>Quando definido, substitui "hoje". Deve ser restaurado para <c>null</c> ao final do teste.</summary>
+    public DateOnly? TodayOverride { get; set; }
+
+    public DateTimeOffset UtcNow
+    {
+        get
+        {
+            var now = DateTimeOffset.UtcNow;
+            return new DateTimeOffset(now.Ticks - (now.Ticks % TimeSpan.TicksPerMillisecond), TimeSpan.Zero);
+        }
+    }
+
+    public DateOnly Today => TodayOverride ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, SaoPaulo).DateTime);
 }
 
 [CollectionDefinition(Name)]

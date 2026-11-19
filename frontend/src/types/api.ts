@@ -132,3 +132,220 @@ export type RecurrenceFrequency =
 export type GroupMemberRole = 'Owner' | 'Admin' | 'Member'
 export type GroupMemberStatus = 'Active' | 'Left' | 'Removed'
 export type GroupInvitationStatus = 'Pending' | 'Accepted' | 'Declined' | 'Revoked' | 'Expired'
+
+// ---------- 6. Contas ----------
+
+export interface AccountSnapshotSummary {
+  balance: number
+  referenceDate: DateOnlyString
+}
+
+export interface AccountDto {
+  id: Uuid
+  name: string
+  institution: string | null
+  type: AccountType
+  currency: 'BRL'
+  isActive: boolean
+  /** Snapshot de referência (D-019). */
+  latestSnapshot: AccountSnapshotSummary | null
+  /** PROJETADO, não é saldo bancário; `null` se não há snapshot. */
+  projectedBalance: number | null
+  /** Data-alvo usada na projeção. */
+  projectedAsOf: DateOnlyString
+  createdAt: IsoDateTimeString
+  updatedAt: IsoDateTimeString
+}
+
+export interface BalanceSnapshotDto {
+  id: Uuid
+  balance: number
+  referenceDate: DateOnlyString
+  createdAt: IsoDateTimeString
+}
+
+export interface CreateAccountRequest {
+  name: string
+  institution?: string | null
+  type: AccountType
+  initialBalance?: number
+  balanceReferenceDate?: DateOnlyString
+}
+
+export interface UpdateAccountRequest {
+  name: string
+  institution?: string | null
+  type: AccountType
+}
+
+export interface CreateBalanceSnapshotRequest {
+  balance: number
+  referenceDate: DateOnlyString
+}
+
+// ---------- 7. Categorias ----------
+
+export interface CategoryDto {
+  id: Uuid
+  name: string
+  type: CategoryType
+  parentCategoryId: Uuid | null
+  /** Nome de ícone PrimeIcons, ex.: "pi-shopping-cart". */
+  icon: string | null
+  /** "#RRGGBB" */
+  color: string | null
+  /** Padrão do sistema (somente leitura). */
+  isDefault: boolean
+  isActive: boolean
+}
+
+export interface CreateCategoryRequest {
+  name: string
+  type: CategoryType
+  parentCategoryId?: Uuid | null
+  icon?: string | null
+  color?: string | null
+}
+
+export interface UpdateCategoryRequest {
+  name: string
+  icon?: string | null
+  color?: string | null
+}
+
+// ---------- 8. Movimentações ----------
+
+export interface TransactionDto {
+  id: Uuid
+  description: string
+  type: TransactionType
+  amount: number
+  /** Soma dos pagamentos. */
+  paidAmount: number
+  /** amount - paidAmount */
+  remainingAmount: number
+  /** Apresentado: inclui `Overdue` (docs/STATE_MACHINE.md). */
+  status: TransactionStatus
+  categoryId: Uuid
+  categoryName: string
+  parentCategoryName: string | null
+  categoryColor: string | null
+  categoryIcon: string | null
+  accountId: Uuid | null
+  accountName: string | null
+  paymentMethod: PaymentMethod | null
+  transactionDate: DateOnlyString
+  dueDate: DateOnlyString | null
+  paidAt: DateOnlyString | null
+  notes: string | null
+  createdAt: IsoDateTimeString
+  updatedAt: IsoDateTimeString
+}
+
+export interface TransactionPaymentDto {
+  id: Uuid
+  amount: number
+  paymentDate: DateOnlyString
+  accountId: Uuid | null
+  accountName: string | null
+  paymentMethod: PaymentMethod | null
+  createdAt: IsoDateTimeString
+}
+
+export interface TransactionDetailDto extends TransactionDto {
+  payments: TransactionPaymentDto[]
+}
+
+export type TransactionHistoryAction =
+  'Created' | 'Updated' | 'PaymentAdded' | 'PaymentRemoved' | 'Canceled' | 'Reopened'
+
+export interface TransactionHistoryEntryDto {
+  id: Uuid
+  action: TransactionHistoryAction
+  /** Ex.: "amount", "dueDate" (uma linha por campo alterado). */
+  field: string | null
+  oldValue: string | null
+  newValue: string | null
+  createdAt: IsoDateTimeString
+}
+
+/** Situações aceitas na criação/edição. */
+export type TransactionInitialStatus = 'Planned' | 'Pending'
+
+export interface CreateTransactionRequest {
+  description: string
+  type: TransactionType
+  amount: number
+  categoryId: Uuid
+  accountId?: Uuid | null
+  paymentMethod?: PaymentMethod | null
+  /** Padrão `Pending`. */
+  status?: TransactionInitialStatus
+  transactionDate: DateOnlyString
+  dueDate?: DateOnlyString | null
+  notes?: string | null
+}
+
+/** Mesmos campos da criação, exceto `type` (imutável); `status` opcional (Planned | Pending). */
+export type UpdateTransactionRequest = Omit<CreateTransactionRequest, 'type'>
+
+export interface CreatePaymentRequest {
+  amount: number
+  paymentDate: DateOnlyString
+  accountId?: Uuid | null
+  paymentMethod?: PaymentMethod | null
+}
+
+export type TransactionSortField = 'transactionDate' | 'dueDate' | 'amount' | 'description' | 'createdAt'
+
+/** Query de `GET /transactions`. */
+export interface TransactionListQuery extends PageQuery {
+  from?: DateOnlyString
+  to?: DateOnlyString
+  dueFrom?: DateOnlyString
+  dueTo?: DateOnlyString
+  type?: TransactionType
+  /** Inclui subcategorias. */
+  categoryId?: Uuid
+  accountId?: Uuid
+  /** Status apresentado; aceita `Overdue`. */
+  status?: TransactionStatus
+  search?: string
+}
+
+// ---------- 9. Dashboard ----------
+
+export interface DashboardDto {
+  period: { from: DateOnlyString; to: DateOnlyString }
+  balance: {
+    reportedTotal: number | null
+    projectedTotal: number | null
+    projectedAsOf: DateOnlyString
+    accountsWithBalance: number
+    accountsWithoutBalance: number
+  }
+  totals: {
+    income: number
+    expense: number
+    result: number
+    receivedIncome: number
+    pendingIncome: number
+    paidExpense: number
+    pendingExpense: number
+  }
+  expensesByCategory: {
+    categoryId: Uuid
+    categoryName: string
+    color: string | null
+    total: number
+    percentage: number
+  }[]
+  upcomingDues: TransactionDto[]
+  monthlyHistory: { month: string; income: number; expense: number; result: number }[]
+  today: DateOnlyString
+}
+
+export interface DashboardQuery {
+  from: DateOnlyString
+  to: DateOnlyString
+}

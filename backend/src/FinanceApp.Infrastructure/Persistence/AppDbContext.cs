@@ -1,6 +1,9 @@
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Exceptions;
+using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Auth;
+using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -14,6 +17,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+
+    public DbSet<Account> Accounts => Set<Account>();
+
+    public DbSet<AccountBalanceSnapshot> AccountBalanceSnapshots => Set<AccountBalanceSnapshot>();
+
+    public DbSet<Category> Categories => Set<Category>();
+
+    public DbSet<Transaction> Transactions => Set<Transaction>();
+
+    public DbSet<TransactionPayment> TransactionPayments => Set<TransactionPayment>();
+
+    public DbSet<TransactionAuditEntry> TransactionAuditEntries => Set<TransactionAuditEntry>();
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {

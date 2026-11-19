@@ -19,6 +19,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Contas' },
       },
       {
+        path: 'accounts/:id',
+        name: 'account-detail',
+        component: () => import('@/modules/accounts/pages/AccountDetailPage.vue'),
+        meta: { title: 'Conta' },
+      },
+      {
         path: 'credit-cards',
         name: 'credit-cards',
         component: () => import('@/modules/credit-cards/pages/CreditCardsPage.vue'),

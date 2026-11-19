@@ -66,8 +66,8 @@ public sealed partial class UserService(
     }
 
     /// <summary>
-    /// Anonimiza e desativa a conta (D-014), revogando todos os tokens.
-    /// TODO(Etapa 2/3): excluir dados individuais (contas, cartões, movimentações sem grupo) — aguardando confirmação da D-014.
+    /// Exclui a conta (D-014): apaga definitivamente os dados individuais e, na MESMA transação
+    /// (um único <c>SaveChanges</c>), anonimiza e desativa o usuário e revoga todos os tokens.
     /// </summary>
     public async Task DeleteAccountAsync(DeleteAccountRequest request, CancellationToken cancellationToken)
     {
@@ -80,6 +80,7 @@ public sealed partial class UserService(
         }
 
         var now = clock.UtcNow;
+        await RemoveIndividualFinancialDataAsync(user.Id, cancellationToken).ConfigureAwait(false);
         user.Anonymize(now);
         await db.RevokeActiveRefreshTokensAsync(user.Id, now, RefreshTokenRevocationReason.AccountDeleted, cancellationToken).ConfigureAwait(false);
         var resetTokens = await db.PasswordResetTokens.Where(t => t.UserId == user.Id).ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -87,6 +88,24 @@ public sealed partial class UserService(
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         LogAccountDeleted(user.Id);
+    }
+
+    /// <summary>
+    /// Marca para exclusão todos os dados individuais do usuário (persistidos junto com a anonimização).
+    /// Pagamentos e histórico das movimentações e os saldos das contas saem por cascata no banco.
+    /// As Etapas 3/4 devem estender esta rotina com cartões, parcelamentos e recorrências; movimentações de grupo permanecem
+    /// (autor exibido como "Usuário removido", conta/cartão desvinculados).
+    /// </summary>
+    private async Task RemoveIndividualFinancialDataAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var transactions = await db.Transactions.Where(t => t.CreatedByUserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        db.Transactions.RemoveRange(transactions);
+
+        var accounts = await db.Accounts.Where(a => a.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        db.Accounts.RemoveRange(accounts);
+
+        var categories = await db.Categories.Where(c => c.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        db.Categories.RemoveRange(categories);
     }
 
     /// <summary>Usuário inexistente ou inativo com JWT ainda válido é tratado como não autenticado.</summary>

@@ -46,6 +46,7 @@ O envio de e-mail é substituído por um fake que captura as mensagens; o rate l
 | `Jwt__AccessTokenMinutes` / `Jwt__RefreshTokenDays` | Validade do access token (padrão 15 min) e do refresh token (padrão 7 dias) |
 | `App__FrontendBaseUrl` | URL do frontend usada no link de redefinição de senha |
 | `App__PasswordResetTokenMinutes` | Validade do token de redefinição (padrão 60) |
+| `App__TimeZone` | Fuso IANA da aplicação (padrão `America/Sao_Paulo`, D-021). Define "hoje" (movimentações vencidas, datas futuras, saldo projetado). Validado na inicialização; a imagem Docker inclui `tzdata` |
 | `Cors__AllowedOrigins__0..n` | Origens permitidas (com credenciais). Vazio = nenhuma |
 | `Smtp__Host`, `Smtp__Port`, `Smtp__User`, `Smtp__Password`, `Smtp__UseSsl`, `Smtp__From` | SMTP (Mailpit em desenvolvimento) |
 | `RateLimiting__Enabled`, `RateLimiting__Auth__PermitLimit`, `RateLimiting__Auth__WindowSeconds`, `RateLimiting__Refresh__*` | Rate limiting por IP (padrão: 10/min em login/cadastro/esqueci/redefinir; 30/min em refresh) |
@@ -70,3 +71,13 @@ Observação: o build trata avisos do NuGet Audit como erro — uma vulnerabilid
 - Refresh token opaco (64 bytes) em cookie `gf_refresh` (HttpOnly, SameSite=Strict, Path=/api/v1/auth, Secure fora de Development); somente o hash SHA-256 é persistido; rotação a cada uso com detecção de reutilização (revoga a família).
 - Concorrência otimista (`xmin`) em `refresh_tokens` e `password_reset_tokens` garante rotação/uso único sob requisições simultâneas.
 - Os logs não registram corpo, query string, senhas ou tokens.
+
+## Endpoints (Etapa 2) — ver `../docs/API_CONTRACTS.md` §6–9
+- Contas: `GET | POST /api/v1/accounts`, `GET | PUT /api/v1/accounts/{id}`, `POST .../deactivate | activate`, `GET | POST .../balance-snapshots`
+- Categorias: `GET | POST /api/v1/categories`, `PUT /api/v1/categories/{id}`, `POST .../deactivate | activate`
+- Movimentações: `GET | POST /api/v1/transactions`, `GET | PUT | DELETE /api/v1/transactions/{id}`, `POST .../cancel | reopen`, `GET .../history`, `POST .../payments`, `DELETE .../payments/{paymentId}`
+- Dashboard: `GET /api/v1/dashboard?from=&to=`
+
+Regras no domínio: `Transaction` (máquina de estados, `docs/STATE_MACHINE.md`), `Account.RecordBalance`, `Category`;
+saldo projetado em `Application/Accounts/ProjectedBalanceCalculator` (D-019). A migration `Etapa2_FinancialCore` cria as tabelas,
+as constraints de integridade, os índices únicos por expressão (`lower(name)`) e o seed das 14 categorias padrão (IDs fixos).

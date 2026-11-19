@@ -62,8 +62,13 @@ async function onConfirm(): Promise<void> {
   <section class="surface-card settings-danger" aria-labelledby="delete-title">
     <h2 id="delete-title" class="settings-section__title">Excluir conta</h2>
     <p class="settings-section__description">
-      Esta ação é permanente: sua conta será anonimizada e desativada, e todas as sessões serão encerradas. Não será
-      possível acessá-la novamente.
+      Esta ação é permanente e não pode ser desfeita. Seus dados individuais — contas, saldos informados, movimentações
+      e categorias personalizadas — serão <strong>apagados definitivamente</strong>. Sua conta será desativada, todas as
+      sessões serão encerradas e você não poderá acessá-la novamente.
+    </p>
+    <p class="settings-section__description">
+      Nos históricos de grupos dos quais você participou (disponível em etapas futuras), você aparecerá como “Usuário
+      removido”.
     </p>
     <div class="form-actions">
       <Button label="Excluir minha conta" icon="pi pi-trash" severity="danger" outlined @click="open" />
@@ -72,7 +77,7 @@ async function onConfirm(): Promise<void> {
     <AppConfirmDialog
       v-model:visible="dialogVisible"
       header="Excluir conta"
-      message="Tem certeza? Esta ação não pode ser desfeita. Digite sua senha para confirmar."
+      message="Tem certeza? Seus dados individuais serão apagados definitivamente e não poderão ser recuperados. Digite sua senha para confirmar."
       confirm-label="Excluir definitivamente"
       severity="danger"
       :loading="loading"

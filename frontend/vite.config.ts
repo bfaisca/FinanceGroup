@@ -30,20 +30,6 @@ export default defineConfig(({ mode }) => {
     build: {
       target: 'es2022',
       sourcemap: false,
-      rollupOptions: {
-        output: {
-          manualChunks(id: string) {
-            if (
-              id.includes('node_modules/echarts') ||
-              id.includes('node_modules/zrender') ||
-              id.includes('node_modules/vue-echarts')
-            ) {
-              return 'charts'
-            }
-            return undefined
-          },
-        },
-      },
     },
   }
 })

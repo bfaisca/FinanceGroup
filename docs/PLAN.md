@@ -13,7 +13,8 @@ Entregas incrementais, cada etapa testada e integrada antes da próxima. Status:
 | Infra | Dockerfile API | Dockerfile + Nginx (proxy `/api`) |
 | Testes | Unitários (validação, tokens), integração (fluxos de auth com PostgreSQL) | Stores, serviço HTTP, formulários de auth |
 
-## Etapa 2 — Controle financeiro individual 🟡
+## Etapa 2 — Controle financeiro individual ✅
+> Validada: backend 407 testes (291 unit + 116 integração PostgreSQL), frontend 262 testes, E2E real (API + navegador) cobrindo contas, categorias, movimentações, pagamentos parcial/total, histórico, dashboard e isolamento entre usuários.
 Contratos: `API_CONTRACTS.md` §6–9 · Regras: `STATE_MACHINE.md`, D-014, D-019–D-023. Inclui também a rotina de exclusão de dados individuais (D-014).
 Contas + snapshots + saldo projetado; categorias (seed padrão, personalizadas, subcategorias); movimentações (CRUD, filtros, auditoria); pagamentos parciais/integrais e máquina de estados; dashboard individual.
 

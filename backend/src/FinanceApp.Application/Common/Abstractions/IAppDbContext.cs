@@ -1,4 +1,7 @@
+using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Auth;
+using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +18,18 @@ public interface IAppDbContext
     DbSet<RefreshToken> RefreshTokens { get; }
 
     DbSet<PasswordResetToken> PasswordResetTokens { get; }
+
+    DbSet<Account> Accounts { get; }
+
+    DbSet<AccountBalanceSnapshot> AccountBalanceSnapshots { get; }
+
+    DbSet<Category> Categories { get; }
+
+    DbSet<Transaction> Transactions { get; }
+
+    DbSet<TransactionPayment> TransactionPayments { get; }
+
+    DbSet<TransactionAuditEntry> TransactionAuditEntries { get; }
 
     /// <exception cref="Exceptions.UniqueConstraintViolationException">Violação de índice único.</exception>
     /// <exception cref="Exceptions.ConcurrencyConflictException">Conflito de concorrência otimista.</exception>

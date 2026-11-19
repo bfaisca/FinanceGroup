@@ -2,6 +2,8 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { authService } from '@/modules/auth/services/authService'
 import { userService } from '@/modules/settings/services/userService'
+import { useAccountsStore } from '@/stores/accounts'
+import { useCategoriesStore } from '@/stores/categories'
 import type {
   AuthResponse,
   ChangePasswordRequest,
@@ -33,6 +35,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function clearSession(): void {
+    // Dados em cache pertencem ao usuário anterior: nunca devem aparecer para outra sessão.
+    useAccountsStore().reset()
+    useCategoriesStore().reset()
     accessToken.value = null
     accessTokenExpiresAt.value = null
     user.value = null

@@ -36,6 +36,7 @@ public static class DependencyInjection
         });
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
+        // Singleton: o fuso (App__TimeZone) é resolvido uma vez e validado na inicialização.
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddSingleton<Application.Common.Abstractions.IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ISecureTokenService, SecureTokenService>();
