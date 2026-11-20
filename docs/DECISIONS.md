@@ -138,3 +138,50 @@ Base: movimentações **não canceladas** com `transactionDate` no período (mes
 
 ## D-029 — Exclusão de conta estendida — Aceita (D-014)
 `DeleteAccount` passa a apagar também cartões, parcelamentos e recorrências do usuário (movimentações já eram apagadas). Teste obrigatório.
+
+---
+
+# Etapa 4 — Grupos
+
+## D-030 — Papéis e permissões de grupo — Aceita (papéis) / Proposta (detalhes marcados ⚠)
+- Papéis: **Owner** (criador; tem tudo o que o Admin tem; não pode sair, ser removido nem rebaixado ⚠ — transferência de propriedade fica fora do MVP), **Admin**, **Member**.
+- **Owner/Admin:** convidar (e reenviar/revogar convites), remover **Members** (o Owner também remove Admins), promover Member→Admin e rebaixar Admin→Member (⚠ só o Owner rebaixa Admin), editar nome/descrição, arquivar/reativar o grupo.
+- **Member:** ver o grupo, cadastrar movimentações, registrar o próprio pagamento, sair.
+- Admin/Owner **não** editam, cancelam, excluem nem pagam em nome de movimentações de terceiros (CLAUDE.md §6).
+- Grupo **arquivado** é somente leitura: sem novas movimentações, edições, cancelamentos ou pagamentos; some da lista padrão (`includeArchived=true` mostra). Grupos nunca são excluídos (preservar histórico).
+- Quem não é membro **ativo** (nunca foi, saiu ou foi removido) recebe `404` em qualquer rota do grupo (não vazar existência). Papel insuficiente → `403`.
+
+## D-031 — Convites por e-mail — Aceita
+- Admin/Owner informa o **e-mail**; o sistema gera token aleatório (32 bytes, base64url), guarda **apenas o SHA-256** e envia o link `{App:FrontendBaseUrl}/invitations/{token}` por SMTP (Mailpit em dev). O token nunca é retornado pela API nem logado.
+- Validade de **7 dias**. Um convite `Pending` por (grupo, e-mail); novo convite para o mesmo e-mail com um pendente → `409 conflict`. **Reenviar** gera novo token e nova validade (o anterior deixa de valer).
+- O convidado não precisa ter conta no momento do convite: cadastra-se e aceita logado. Só aceita quem está logado com o **mesmo e-mail** do convite (comparação sem diferenciar maiúsculas); outro e-mail → `403`.
+- Estados: `Pending`, `Accepted`, `Declined`, `Revoked`, `Expired` (expiração derivada na leitura: `Pending` com `expiresAt` no passado). Aceitar convite de quem já é membro ativo → `422`.
+- Falha no envio do e-mail **não** impede criar o convite (`emailSent=false`; Admin pode reenviar).
+- Ex-membros (saíram/removidos) podem ser convidados de novo: o registro `GroupMember` é **reativado** (mesma linha, índice único GroupId+UserId), `status=Active`, `joinedAt` atualizado, `leftAt=null`; o histórico de movimentações e pagamentos permanece.
+
+## D-032 — Movimentações de grupo — Aceita
+- Mesma tabela/entidade `Transaction` com `GroupId` preenchido; **um único registro** por movimentação. **Sem** `AccountId`, `CreditCardId`, parcelamento ou recorrência (⚠ parcelamentos/recorrências em grupo ficam fora do MVP).
+- Criar: membro **ativo** de grupo **ativo** (não arquivado). Autoria = `CreatedByUserId`. Editar/cancelar/reabrir/excluir: **somente o criador**, ainda membro ativo (se o criador saiu, ninguém edita; os pagamentos continuam possíveis). Excluir só sem pagamentos; senão cancelar (D-020).
+- Categoria: padrão do sistema **ou** categoria do próprio criador (nome/cor/ícone ficam visíveis ao grupo; a categoria em si continua sendo do criador).
+- **Pagamentos (qualquer membro ativo registra o próprio):** o pagador/recebedor é `CreatedByUserId` do pagamento (não existe pagador único na movimentação). Vários pagadores por movimentação (pagamentos parciais) são permitidos; só quem registrou remove o próprio pagamento. Mesma máquina de estados (STATE_MACHINE.md): total pago ≤ valor, `paymentDate` ≤ hoje, nada em movimentação cancelada.
+- O pagamento aceita `accountId` opcional **do próprio pagador**: é privado — nunca aparece em nenhum DTO de grupo e só serve ao individual (D-033).
+- Histórico de auditoria igual ao individual, com o **nome** de quem agiu.
+
+## D-033 — Impacto no controle individual — Aceita
+- Movimentações de grupo **não** entram em listagens, dashboard, relatórios, limites de cartão nem projeções **individuais** como movimentações.
+- Única ligação: um **pagamento** de grupo com `accountId` informado (conta do próprio pagador) altera o **saldo projetado dessa conta** na `paymentDate` (despesa subtrai, receita soma), respeitando a regra do snapshot (estritamente após a data do snapshot, até `asOf`). Sem conta no pagamento → só o grupo.
+- Toda consulta individual existente passa a filtrar `GroupId == null`.
+
+## D-034 — Dashboard do grupo — Técnica
+Período `[from, to]` por `transactionDate`, movimentações **não canceladas**.
+- Totais: `expenses`/`income` (soma dos valores), `expensesPaid`/`incomeReceived` (soma dos pagamentos), `expensesPending`/`incomePending` (valor − pago). Pendente nunca conta como pago.
+- Participação **por quem cadastrou** (`createdBy`): soma do valor das movimentações por `CreatedByUserId`; percentual sobre o total do período do mesmo tipo.
+- Participação **por quem pagou** (`paidBy`): soma dos **pagamentos** por pagador (de movimentações do período); percentual sobre o total pago do mesmo tipo. Os dois critérios são sempre exibidos separados, com a regra de cálculo explícita na interface; são indicadores estatísticos (CLAUDE.md §6), não dívidas.
+- Também: despesas por categoria (raiz, com subcategorias), evolução mensal (`months` 1–36 terminando em `endMonth`, padrão 6 e mês de `to`), comparação com o período anterior de mesma duração.
+- Membros que saíram/foram removidos continuam aparecendo (com `status`); contas removidas aparecem como "Usuário removido". Percentuais 0–100 com 2 casas.
+
+## D-035 — Privacidade nos DTOs de grupo — Técnica
+Membros aparecem com `userId`, `name`, papel, status e datas — **sem e-mail**. O e-mail só aparece na lista de convites (Admin/Owner). Nenhum DTO de grupo contém conta, cartão, saldo ou qualquer movimentação individual. Testes de privacidade obrigatórios.
+
+## D-036 — Exclusão de conta com grupos — Aceita (estende D-014/D-029)
+Além de D-014: memberships ativas passam a `Left`; convites pendentes enviados pelo usuário são revogados. Se o usuário era **Owner** de um grupo com outros membros ativos, a propriedade passa ao Admin ativo mais antigo (senão ao Member ativo mais antigo); se não restar nenhum membro ativo, o grupo é arquivado. Movimentações e pagamentos de grupo do usuário permanecem, com autor "Usuário removido" e `accountId` de pagamentos desvinculado.

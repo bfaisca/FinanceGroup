@@ -523,6 +523,157 @@ interface DashboardDto {
 
 ---
 
+## 16. Grupos — `/api/v1/groups` (Bearer) — Etapa 4
+
+Regras: D-030 a D-036. Não membro ativo → `404 not_found`; papel insuficiente → `403 forbidden`; regra violada → `422 business_rule_violation` (mensagem pt-BR em `detail`). **Nenhum DTO de grupo contém conta, cartão, saldo ou e-mail de membro.**
+
+```ts
+type GroupMemberRole = 'Owner' | 'Admin' | 'Member';
+type GroupMemberStatus = 'Active' | 'Left' | 'Removed';
+
+interface GroupSummaryDto {
+  id: string; name: string; description: string | null;
+  myRole: GroupMemberRole; memberCount: number;   // membros ativos
+  isActive: boolean;                              // false = arquivado
+  createdAt: string;
+}
+interface GroupMemberDto {
+  id: string;                  // id do GroupMember
+  userId: string; name: string; // "Usuário removido" se a conta foi excluída
+  role: GroupMemberRole; status: GroupMemberStatus;
+  joinedAt: string; leftAt: string | null;
+  isMe: boolean;
+}
+interface GroupDetailDto extends GroupSummaryDto {
+  createdByName: string; updatedAt: string;
+  permissions: { canManageMembers: boolean; canInvite: boolean; canEditGroup: boolean; canArchive: boolean; canLeave: boolean; canCreateTransactions: boolean };
+  members: GroupMemberDto[];   // apenas ativos
+}
+```
+
+| Método e rota | Corpo / query | Resposta |
+|---|---|---|
+| `GET /groups` | `includeArchived` (padrão `false`) | `200 GroupSummaryDto[]` (ordem alfabética) |
+| `POST /groups` | `{ name (1–100), description? (≤ 500) }` | `201 GroupDetailDto` (criador = Owner) |
+| `GET /groups/{id}` | — | `200 GroupDetailDto` |
+| `PUT /groups/{id}` | `{ name, description? }` (Admin/Owner) | `200 GroupDetailDto` |
+| `POST /groups/{id}/archive` · `/unarchive` | — (Admin/Owner) | `200 GroupDetailDto` |
+| `POST /groups/{id}/leave` | — (Owner → `422`) | `204` |
+| `GET /groups/{id}/members` | `includeFormer` (padrão `false`) | `200 GroupMemberDto[]` |
+| `PUT /groups/{id}/members/{memberId}/role` | `{ role: 'Admin' \| 'Member' }` | `200 GroupMemberDto` |
+| `DELETE /groups/{id}/members/{memberId}` | — | `204` (status `Removed`) |
+
+Papéis em `role`/remoção: ver D-030 (`403` se o papel não permite; `422` ao tentar alterar/remover o Owner ou a si mesmo na remoção).
+
+### 16.1 Convites
+
+```ts
+type GroupInvitationStatus = 'Pending' | 'Accepted' | 'Declined' | 'Revoked' | 'Expired';
+interface GroupInvitationDto {
+  id: string; email: string; status: GroupInvitationStatus;   // Expired é derivado
+  invitedByName: string; expiresAt: string; createdAt: string;
+  emailSent?: boolean;                                         // apenas na resposta de POST/resend
+}
+interface InvitationPreviewDto {                               // GET /invitations/{token}
+  groupName: string; invitedByName: string; email: string;
+  status: GroupInvitationStatus; expiresAt: string;
+  canAccept: boolean;      // Pending + não expirado + e-mail do usuário logado = e-mail do convite
+  alreadyMember: boolean;
+}
+```
+
+| Método e rota | Corpo | Resposta |
+|---|---|---|
+| `GET /groups/{id}/invitations` (Admin/Owner) | `status?` | `200 GroupInvitationDto[]` (mais recente primeiro) |
+| `POST /groups/{id}/invitations` (Admin/Owner) | `{ email }` | `201 GroupInvitationDto` (`409 conflict` se já há `Pending` para o e-mail; `422` se o e-mail já é de membro ativo) |
+| `POST /groups/{id}/invitations/{invitationId}/resend` | — | `200 GroupInvitationDto` (novo token/validade) |
+| `DELETE /groups/{id}/invitations/{invitationId}` | — | `204` (`Revoked`; só `Pending`) |
+| `GET /invitations/{token}` | — | `200 InvitationPreviewDto` (`404` se o token não existe) |
+| `POST /invitations/{token}/accept` | — | `200 GroupSummaryDto` (`403` e-mail diferente; `422` expirado/revogado/já usado/já membro) |
+| `POST /invitations/{token}/decline` | — | `204` (mesmas regras de e-mail) |
+
+O link enviado por e-mail aponta para a **rota do frontend** `/invitations/:token`.
+
+### 16.2 Movimentações do grupo — `/groups/{id}/transactions`
+
+```ts
+interface GroupUserRefDto { userId: string; name: string; }   // "Usuário removido" quando anonimizado
+
+interface GroupTransactionDto {
+  id: string; groupId: string;
+  description: string; type: TransactionType; amount: number;
+  paidAmount: number; remainingAmount: number;
+  status: TransactionStatus;                                    // apresentado (inclui 'Overdue')
+  categoryId: string; categoryName: string; parentCategoryName: string | null;
+  categoryColor: string | null; categoryIcon: string | null;
+  paymentMethod: PaymentMethod | null;
+  transactionDate: string; dueDate: string | null; paidAt: string | null;
+  notes: string | null;
+  createdBy: GroupUserRefDto;
+  createdAt: string; updatedAt: string;
+  permissions: { canEdit: boolean; canCancel: boolean; canDelete: boolean; canPay: boolean };
+}
+interface GroupTransactionPaymentDto {
+  id: string; amount: number; paymentDate: string;
+  paymentMethod: PaymentMethod | null;
+  paidBy: GroupUserRefDto; createdAt: string;
+  canRemove: boolean;                  // só o próprio pagador, e com o grupo ativo
+}
+interface GroupTransactionDetailDto extends GroupTransactionDto { payments: GroupTransactionPaymentDto[]; }
+interface GroupTransactionHistoryEntryDto {
+  id: string; action: 'Created' | 'Updated' | 'PaymentAdded' | 'PaymentRemoved' | 'Canceled' | 'Reopened';
+  field: string | null; oldValue: string | null; newValue: string | null;
+  actorName: string; createdAt: string;
+}
+```
+
+| Método e rota | Corpo / query | Resposta |
+|---|---|---|
+| `GET /groups/{id}/transactions` | `page`, `pageSize`, `sort` (`transactionDate`\|`dueDate`\|`amount`\|`description`\|`createdAt`; padrão `-transactionDate`), `from`, `to`, `type`, `categoryId` (inclui subcategorias), `status`, `search`, `createdByUserId`, `paidByUserId` (tem ao menos um pagamento dele) | `200 PagedResult<GroupTransactionDto>` |
+| `POST /groups/{id}/transactions` | `CreateGroupTransactionRequest` | `201 GroupTransactionDetailDto` |
+| `GET /groups/{id}/transactions/{txId}` | — | `200 GroupTransactionDetailDto` |
+| `PUT /groups/{id}/transactions/{txId}` | `UpdateGroupTransactionRequest` (só criador) | `200 GroupTransactionDetailDto` |
+| `DELETE /groups/{id}/transactions/{txId}` | — (só criador, sem pagamentos) | `204` |
+| `POST .../{txId}/cancel` · `/reopen` | — (só criador) | `200 GroupTransactionDetailDto` |
+| `GET .../{txId}/history` | — | `200 GroupTransactionHistoryEntryDto[]` |
+| `POST .../{txId}/payments` | `{ amount, paymentDate, accountId?, paymentMethod? }` | `201 GroupTransactionDetailDto` (`accountId` = conta do próprio pagador; **nunca devolvido**) |
+| `DELETE .../{txId}/payments/{paymentId}` | — (só o pagador) | `200 GroupTransactionDetailDto` |
+
+```ts
+interface CreateGroupTransactionRequest {
+  description: string; type: TransactionType; amount: number; categoryId: string;
+  paymentMethod?: PaymentMethod | null; status?: 'Planned' | 'Pending';
+  transactionDate: string; dueDate?: string | null; notes?: string | null;
+}
+// Update: mesmos campos, exceto `type` (imutável). Validações iguais às do §8 (exceto conta); categoria: padrão ou do criador, ativa, mesmo `type`.
+```
+Violações do §8 (pagar acima do restante, cancelada, excluir com pagamentos etc.) → `422`; grupo arquivado → `422`; tentar editar/cancelar/excluir movimentação alheia → `403`; `GET`/mutação de movimentação de outro grupo → `404`.
+
+### 16.3 Dashboard do grupo — `GET /groups/{id}/dashboard`
+
+Query: `from`, `to` (obrigatórios, `from ≤ to`, ≤ 366 dias), `months` (1–36, padrão 6), `endMonth` (`YYYY-MM`, padrão mês de `to`). Regras: D-034.
+
+```ts
+interface GroupParticipationItemDto {
+  userId: string; name: string; status: GroupMemberStatus;
+  expenseAmount: number; expensePercent: number;   // 0–100, 2 casas
+  incomeAmount: number; incomePercent: number;
+}
+interface GroupDashboardDto {
+  period: { from: string; to: string };
+  totals: { expenses: number; expensesPaid: number; expensesPending: number;
+            income: number; incomeReceived: number; incomePending: number; balance: number /* income - expenses */ };
+  createdBy: GroupParticipationItemDto[];   // por quem CADASTROU (soma dos valores)
+  paidBy: GroupParticipationItemDto[];      // por quem PAGOU/RECEBEU (soma dos pagamentos)
+  expensesByCategory: { categoryId: string; name: string; color: string | null; amount: number; percent: number;
+                        children: { categoryId: string; name: string; amount: number; percent: number }[] }[];
+  monthly: { month: string /* YYYY-MM */; income: number; expenses: number }[];
+  previousPeriod: { from: string; to: string; expenses: number; income: number;
+                    expensesChangePercent: number | null; incomeChangePercent: number | null };  // null se base 0
+}
+```
+`createdBy`/`paidBy` ordenados por maior valor total (despesa + receita) e depois por nome; incluem apenas quem tem valor no período.
+
 ## Changelog
 
 | Data | Versão | Alteração | Autor |
@@ -534,3 +685,4 @@ interface DashboardDto {
 | 2026-11-18 | 1.1.1 | Esclarecimentos da implementação da Etapa 2 (**sem alterar rotas, DTOs ou códigos**): `pageSize` fora de 1–100 e `sort` desconhecido → `400 validation_error`; `categoryId`/`accountId`/`parentCategoryId` inexistentes ou de outro usuário no **corpo** → `400 validation_error` com `errors.<campo>` (mesma mensagem nos dois casos); categoria/conta inativa → `422`; subcategoria com tipo diferente do pai ou profundidade > 1 → `422`; `POST .../payments` responde `201` com o `TransactionDetailDto` atualizado; `payments` do detalhe em ordem cronológica; histórico: `field` ∈ `description, amount, category, account, paymentMethod, transactionDate, dueDate, notes, status, payment` (`category`/`account` trazem os **nomes**); `status` em `PUT` só vale para movimentações sem pagamentos (`Planned` com pagamentos → `422`); período do dashboard conta dias inclusivos (máx. 366); pagamentos simultâneos que perdem a disputa recebem `409 conflict` ou `422` | Backend |
 | 2026-11-20 | 1.2 | Etapa 3: cartões, compras no cartão, parcelamentos, recorrências, relatórios, resumo de cartões no dashboard (seções 10–15; aditivo) | Coordenação (backend implementa) |
 | 2026-11-20 | 1.2.1 | Esclarecimentos da implementação da Etapa 3 (**sem alterar rotas, DTOs ou códigos**; leitura mais literal do contrato): (1) nome de cartão duplicado (case-insensitive, por usuário) → `409 conflict`; (2) `PUT /transactions/{id}` de compra no cartão: `creditCardId` diferente do gravado → `422`, `null`/omitido é tolerado; `accountId` informado → `400` com `errors.accountId`; `dueDate` diferente do gravado → `400` com `errors.dueDate` (em parcela: `422`), repetir o valor gravado é tolerado; mudar `transactionDate` recalcula o vencimento pela fatura (D-025); (3) parcela: alterar `amount`/`transactionDate` → `422`; `DELETE` de parcela ou de ocorrência de recorrência → `422` (use cancelar / o plano / desativar a regra); `PUT` em ocorrência a marca como editada manualmente (preservada na regeneração, D-027); (4) parcelas: datas = `firstDate + i meses` com ajuste ao fim do mês sem deriva (31/jan → 28/fev → 31/mar); `Planned` se data > hoje, senão `Pending`; sem cartão `dueDate = transactionDate`; (5) `GET /installment-plans`: `status` é derivado das parcelas (Open = há parcela não cancelada em aberto; Canceled = todas canceladas; senão Completed), `sort` ∈ `firstDate, description, totalAmount, createdAt` (prefixo `-` desc.); (6) recorrências: `GET /recurrences` devolve array sem paginação; `startDate` até 366 dias no passado; `interval` 1–365 (em `Custom` = dias); `nextOccurrenceDate` = primeira data ≥ hoje do cronograma sem ocorrência paga/cancelada (`null` se inativa ou encerrada); `generatedCount` = ocorrências existentes; cartão/categoria/conta inativos fazem o gerador ignorar a regra (log) sem erro; (7) relatórios: base = movimentações **não canceladas** do usuário por `transactionDate`; `by-account` usa a conta da movimentação ou a do cartão, sem nenhuma → `accountId: null`, `accountName: "Sem conta"`; `by-payment-method` inclui `paymentMethod: null`; empates ordenados por nome; percentuais 0–100 com 2 casas (arredondamento comercial); `installments`: compromisso por `dueDate ?? transactionDate` do restante (`amount − paidAmount`) das parcelas não canceladas e em aberto, parcelas atrasadas somam no mês corrente, `plans` = planos `Open` por próximo vencimento; `recurrences`: somente ocorrências já geradas, não canceladas, com data > hoje e ≤ hoje + 12 meses, apenas regras ativas; `from`/`to` ausentes, `from > to` ou período > 366 dias → `400 validation_error` (`errors.from`/`errors.to`); `months` fora de 1–36 e `endMonth` fora de `YYYY-MM` → `400`; (8) exclusão da conta (`DELETE /users/me`) também apaga cartões, planos, regras e suas movimentações na mesma transação; (9) novas variáveis de ambiente `Recurrence__HorizonMonths` (12), `Recurrence__GenerationIntervalMinutes` (360) e `Recurrence__BackgroundEnabled` (true) | Backend |
+| 2026-11-20 | 1.3 | Etapa 4: grupos, convites, membros, movimentações de grupo, pagamentos por membro e dashboard do grupo (seção 16; aditivo). Decisões D-030 a D-036 | Coordenação (backend implementa) |
