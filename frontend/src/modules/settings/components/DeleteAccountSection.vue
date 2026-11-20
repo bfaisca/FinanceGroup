@@ -62,9 +62,10 @@ async function onConfirm(): Promise<void> {
   <section class="surface-card settings-danger" aria-labelledby="delete-title">
     <h2 id="delete-title" class="settings-section__title">Excluir conta</h2>
     <p class="settings-section__description">
-      Esta ação é permanente e não pode ser desfeita. Seus dados individuais — contas, saldos informados, movimentações
-      e categorias personalizadas — serão <strong>apagados definitivamente</strong>. Sua conta será desativada, todas as
-      sessões serão encerradas e você não poderá acessá-la novamente.
+      Esta ação é permanente e não pode ser desfeita. Seus dados individuais — contas, saldos informados, cartões de
+      crédito, movimentações, parcelamentos, recorrências e categorias personalizadas — serão
+      <strong>apagados definitivamente</strong>. Sua conta será desativada, todas as sessões serão encerradas e você não
+      poderá acessá-la novamente.
     </p>
     <p class="settings-section__description">
       Nos históricos de grupos dos quais você participou (disponível em etapas futuras), você aparecerá como “Usuário

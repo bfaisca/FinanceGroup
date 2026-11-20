@@ -1,3 +1,4 @@
+using FinanceApp.Application.CreditCards;
 using FinanceApp.Application.Transactions;
 
 namespace FinanceApp.Application.Dashboard;
@@ -32,7 +33,17 @@ public sealed record DashboardDto(
     IReadOnlyList<ExpenseByCategoryDto> ExpensesByCategory,
     IReadOnlyList<TransactionDto> UpcomingDues,
     IReadOnlyList<MonthlyHistoryDto> MonthlyHistory,
-    DateOnly Today);
+    DateOnly Today,
+    IReadOnlyList<DashboardCreditCardDto> CreditCards);
+
+/// <summary>Resumo de cartão ativo no dashboard (contrato §15).</summary>
+public sealed record DashboardCreditCardDto(
+    Guid Id,
+    string Name,
+    decimal CreditLimit,
+    decimal UsedLimit,
+    decimal AvailableLimit,
+    OpenInvoiceDto OpenInvoice);
 
 /// <summary>Parâmetros de <c>GET /dashboard</c>: <c>from</c> e <c>to</c> obrigatórios.</summary>
 public sealed class DashboardQuery

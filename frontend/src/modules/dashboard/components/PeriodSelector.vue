@@ -117,7 +117,11 @@ function applyCustom(): void {
   min-width: 10rem;
   text-align: center;
   font-weight: 600;
-  text-transform: capitalize;
+  text-transform: lowercase;
+}
+
+.period__label::first-letter {
+  text-transform: uppercase;
 }
 
 .period__custom {

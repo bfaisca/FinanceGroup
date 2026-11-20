@@ -12,6 +12,7 @@ import { useClockStore } from '@/stores/clock'
 import type { TransactionDto } from '@/types/api'
 import { formatDate } from '@/utils/format'
 import { monthPeriod, validatePeriod, type Period } from '@/utils/period'
+import CreditCardsSummary from '../components/CreditCardsSummary.vue'
 import ExpensesByCategoryChart from '../components/ExpensesByCategoryChart.vue'
 import MonthlyHistoryChart from '../components/MonthlyHistoryChart.vue'
 import PeriodSelector from '../components/PeriodSelector.vue'
@@ -199,6 +200,11 @@ function openTransaction(tx: TransactionDto): void {
             <MonthlyHistoryChart :months="data.monthlyHistory" :loading="dashboard.loading.value" />
           </section>
         </div>
+
+        <section class="surface-card dashboard__block" aria-labelledby="cards-title">
+          <h2 id="cards-title" class="dashboard__title">Resumo dos cartões</h2>
+          <CreditCardsSummary :cards="data.creditCards ?? []" />
+        </section>
 
         <section class="surface-card dashboard__block" aria-labelledby="upcoming-title">
           <h2 id="upcoming-title" class="dashboard__title">Próximos vencimentos</h2>

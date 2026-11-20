@@ -2,6 +2,8 @@ using System.Globalization;
 using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Categories;
 using FinanceApp.Domain.Common;
+using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Installments;
 
 namespace FinanceApp.Domain.Transactions;
 
@@ -36,6 +38,24 @@ public sealed class Transaction
 
     public Guid? AccountId { get; private set; }
 
+    /// <summary>Cartão de crédito da compra (opcional, imutável depois de criada — D-025). Só despesas.</summary>
+    public Guid? CreditCardId { get; private set; }
+
+    /// <summary>Parcelamento de origem (parcelas) — nulo para movimentações comuns.</summary>
+    public Guid? InstallmentPlanId { get; private set; }
+
+    /// <summary>Número da parcela (1..N) dentro do parcelamento.</summary>
+    public int? InstallmentNumber { get; private set; }
+
+    /// <summary>Recorrência de origem (ocorrências) — nulo para movimentações comuns.</summary>
+    public Guid? RecurrenceRuleId { get; private set; }
+
+    /// <summary>Data do cronograma que originou a ocorrência (chave de idempotência junto com a regra).</summary>
+    public DateOnly? OccurrenceDate { get; private set; }
+
+    /// <summary>Ocorrência editada à mão: é preservada nas regenerações da recorrência (D-027).</summary>
+    public bool IsManuallyEdited { get; private set; }
+
     public Guid CategoryId { get; private set; }
 
     public string Description { get; private set; }
@@ -69,6 +89,10 @@ public sealed class Transaction
 
     public Account? Account { get; private set; }
 
+    public CreditCard? CreditCard { get; private set; }
+
+    public InstallmentPlan? InstallmentPlan { get; private set; }
+
     public IReadOnlyCollection<TransactionPayment> Payments => payments;
 
     public IReadOnlyCollection<TransactionAuditEntry> AuditEntries => auditEntries;
@@ -76,6 +100,10 @@ public sealed class Transaction
     public decimal RemainingAmount => Amount - PaidAmount;
 
     public bool IsSettled => Status is TransactionStatus.Paid or TransactionStatus.Received;
+
+    public bool IsInstallment => InstallmentPlanId is not null;
+
+    public bool IsOccurrence => RecurrenceRuleId is not null;
 
     // ------------------------------------------------------------------ criação
 
@@ -91,7 +119,9 @@ public sealed class Transaction
         DateOnly transactionDate,
         DateOnly? dueDate,
         string? notes,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        CreditCard? creditCard = null,
+        TransactionOrigin? origin = null)
     {
         ArgumentNullException.ThrowIfNull(category);
         Guard.NotEmpty(createdByUserId, "O usuário é obrigatório.");
@@ -107,9 +137,44 @@ public sealed class Transaction
 
         var normalizedDescription = NormalizeDescription(description);
         EnsureAmount(amount);
-        EnsureDates(transactionDate, dueDate);
         EnsureCategory(category, type);
         account?.EnsureActive("A conta selecionada está desativada.");
+
+        // Compra no cartão (D-025): só despesa, cartão ativo do próprio usuário, sem conta/vencimento informados;
+        // a forma de pagamento é sempre CreditCard e o vencimento é o da fatura que recebe a compra.
+        if (creditCard is not null)
+        {
+            if (type != TransactionType.Expense)
+            {
+                throw new DomainException("Somente despesas podem ser lançadas no cartão de crédito.");
+            }
+
+            if (creditCard.UserId != createdByUserId)
+            {
+                throw new DomainException("O cartão selecionado não pertence ao usuário.");
+            }
+
+            creditCard.EnsureActive("O cartão selecionado está desativado.");
+            if (account is not null)
+            {
+                throw new DomainException("Compras no cartão não aceitam conta: a conta é a associada ao cartão.");
+            }
+
+            if (dueDate is not null)
+            {
+                throw new DomainException("O vencimento de compras no cartão é calculado automaticamente.");
+            }
+
+            if (paymentMethod is not null and not Domain.Transactions.PaymentMethod.CreditCard)
+            {
+                throw new DomainException("A forma de pagamento de compras no cartão deve ser cartão de crédito.");
+            }
+
+            paymentMethod = Domain.Transactions.PaymentMethod.CreditCard;
+            dueDate = creditCard.CalculateDueDate(transactionDate);
+        }
+
+        EnsureDates(transactionDate, dueDate);
         var normalizedNotes = NormalizeNotes(notes);
         var utcNow = Guard.Utc(now);
 
@@ -118,6 +183,11 @@ public sealed class Transaction
             Id = Guid.NewGuid(),
             CreatedByUserId = createdByUserId,
             AccountId = account?.Id,
+            CreditCardId = creditCard?.Id,
+            InstallmentPlanId = origin?.InstallmentPlanId,
+            InstallmentNumber = origin?.InstallmentNumber,
+            RecurrenceRuleId = origin?.RecurrenceRuleId,
+            OccurrenceDate = origin?.OccurrenceDate,
             CategoryId = category.Id,
             Description = normalizedDescription,
             Amount = amount,
@@ -171,10 +241,52 @@ public sealed class Transaction
         DateOnly? dueDate,
         string? notes,
         TransactionStatus? requestedStatus,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        CreditCard? creditCard = null)
     {
         ArgumentNullException.ThrowIfNull(category);
         EnsureNotCanceled("Movimentações canceladas não podem ser editadas. Reabra a movimentação antes.");
+
+        // Parcelas: valor e data são imutáveis (D-026).
+        if (InstallmentPlanId is not null)
+        {
+            if (amount != Amount)
+            {
+                throw new DomainException("O valor de uma parcela não pode ser alterado.");
+            }
+
+            if (transactionDate != TransactionDate)
+            {
+                throw new DomainException("A data de uma parcela não pode ser alterada.");
+            }
+        }
+
+        // Compra no cartão (D-025): sem conta; o vencimento é o da fatura e só é recalculado se a data da compra mudar.
+        if (CreditCardId is not null)
+        {
+            if (creditCard is null || creditCard.Id != CreditCardId)
+            {
+                throw new InvalidOperationException("O cartão da compra não foi carregado.");
+            }
+
+            if (account is not null)
+            {
+                throw new DomainException("Compras no cartão não aceitam conta: a conta é a associada ao cartão.");
+            }
+
+            if (dueDate is not null)
+            {
+                throw new DomainException("O vencimento de compras no cartão é calculado automaticamente.");
+            }
+
+            if (paymentMethod is not null and not Domain.Transactions.PaymentMethod.CreditCard)
+            {
+                throw new DomainException("A forma de pagamento de compras no cartão deve ser cartão de crédito.");
+            }
+
+            paymentMethod = Domain.Transactions.PaymentMethod.CreditCard;
+            dueDate = transactionDate == TransactionDate ? DueDate : creditCard.CalculateDueDate(transactionDate);
+        }
 
         if (requestedStatus is not null and not (TransactionStatus.Planned or TransactionStatus.Pending))
         {
@@ -263,6 +375,13 @@ public sealed class Transaction
         }
 
         RecordChange(userId, "status", oldStatus.ToString(), Status.ToString(), utcNow);
+
+        // Editar uma ocorrência a protege de regenerações da recorrência (D-027).
+        if (RecurrenceRuleId is not null)
+        {
+            IsManuallyEdited = true;
+        }
+
         UpdatedAt = utcNow;
     }
 
@@ -393,6 +512,18 @@ public sealed class Transaction
     /// <summary>Movimentações com pagamentos só podem ser canceladas, nunca excluídas (D-020).</summary>
     public void EnsureCanBeDeleted()
     {
+        if (InstallmentPlanId is not null)
+        {
+            throw new DomainException(
+                "Parcelas não podem ser excluídas individualmente. Cancele a parcela ou exclua o parcelamento.");
+        }
+
+        if (RecurrenceRuleId is not null)
+        {
+            throw new DomainException(
+                "Ocorrências de recorrência não podem ser excluídas individualmente. Cancele a ocorrência ou desative a recorrência.");
+        }
+
         if (PaidAmount > 0)
         {
             throw new DomainException(

@@ -47,6 +47,9 @@ O envio de e-mail é substituído por um fake que captura as mensagens; o rate l
 | `App__FrontendBaseUrl` | URL do frontend usada no link de redefinição de senha |
 | `App__PasswordResetTokenMinutes` | Validade do token de redefinição (padrão 60) |
 | `App__TimeZone` | Fuso IANA da aplicação (padrão `America/Sao_Paulo`, D-021). Define "hoje" (movimentações vencidas, datas futuras, saldo projetado). Validado na inicialização; a imagem Docker inclui `tzdata` |
+| `Recurrence__HorizonMonths` | Horizonte de geração das ocorrências de recorrências, em meses (padrão 12; compose: `RECURRENCE_HORIZON_MONTHS`). D-027 |
+| `Recurrence__GenerationIntervalMinutes` | Intervalo do serviço em segundo plano que gera as ocorrências que faltam (padrão 360; compose: `RECURRENCE_GENERATION_INTERVAL_MINUTES`). Roda também na inicialização. Seguro com várias instâncias (índice único `recurrence_rule_id + occurrence_date`) |
+| `Recurrence__BackgroundEnabled` | `false` desliga o serviço em segundo plano (padrão `true`; desligado nos testes de integração; compose: `RECURRENCE_BACKGROUND_ENABLED`) |
 | `Cors__AllowedOrigins__0..n` | Origens permitidas (com credenciais). Vazio = nenhuma |
 | `Smtp__Host`, `Smtp__Port`, `Smtp__User`, `Smtp__Password`, `Smtp__UseSsl`, `Smtp__From` | SMTP (Mailpit em desenvolvimento) |
 | `RateLimiting__Enabled`, `RateLimiting__Auth__PermitLimit`, `RateLimiting__Auth__WindowSeconds`, `RateLimiting__Refresh__*` | Rate limiting por IP (padrão: 10/min em login/cadastro/esqueci/redefinir; 30/min em refresh) |
@@ -81,3 +84,15 @@ Observação: o build trata avisos do NuGet Audit como erro — uma vulnerabilid
 Regras no domínio: `Transaction` (máquina de estados, `docs/STATE_MACHINE.md`), `Account.RecordBalance`, `Category`;
 saldo projetado em `Application/Accounts/ProjectedBalanceCalculator` (D-019). A migration `Etapa2_FinancialCore` cria as tabelas,
 as constraints de integridade, os índices únicos por expressão (`lower(name)`) e o seed das 14 categorias padrão (IDs fixos).
+
+## Endpoints (Etapa 3) — ver `../docs/API_CONTRACTS.md` §10–15
+- Cartões: `GET | POST /api/v1/credit-cards`, `GET | PUT /api/v1/credit-cards/{id}`, `POST .../deactivate | activate`
+- Parcelamentos: `GET | POST /api/v1/installment-plans`, `GET | DELETE /api/v1/installment-plans/{id}`, `POST .../cancel`
+- Recorrências: `GET | POST /api/v1/recurrences`, `GET | PUT /api/v1/recurrences/{id}`, `POST .../deactivate | activate`
+- Relatórios: `GET /api/v1/reports/summary | by-category | by-account | by-payment-method | monthly-evolution | installments | recurrences`
+- Movimentações: `creditCardId` (compra no cartão), `installment`, `recurrenceRuleId`; filtros `creditCardId`, `installmentPlanId`, `recurrenceRuleId`. Dashboard: `creditCards`.
+
+Regras no domínio: `BillingCycle` (D-025), `InstallmentCalculator`/`InstallmentPlan` (D-026), `RecurrenceSchedule`/`RecurrenceRule` (D-027).
+A migration `Etapa3_CardsInstallmentsRecurrences` cria `credit_cards`, `installment_plans` e `recurrence_rules`, acrescenta colunas/FKs/checks em
+`transactions` e os índices únicos `(installment_plan_id, installment_number)` e `(recurrence_rule_id, occurrence_date)`, que garantem a idempotência
+da geração. O `RecurrenceGenerationHostedService` gera as ocorrências na inicialização e a cada `Recurrence__GenerationIntervalMinutes`.

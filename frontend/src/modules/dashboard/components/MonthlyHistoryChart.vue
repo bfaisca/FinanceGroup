@@ -133,6 +133,10 @@ const ariaLabel = computed(
 }
 
 .monthly-chart__table tbody th {
-  text-transform: capitalize;
+  text-transform: lowercase;
+}
+
+.monthly-chart__table tbody th::first-letter {
+  text-transform: uppercase;
 }
 </style>

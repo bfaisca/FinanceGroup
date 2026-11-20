@@ -15,6 +15,15 @@ describe('DeleteAccountSection (D-014)', () => {
     wrapper.unmount()
   })
 
+  it('menciona cartões, parcelamentos e recorrências entre os dados apagados (D-029)', () => {
+    const { wrapper } = mountWithPlugins(DeleteAccountSection, { pinia: createPinia() })
+    const text = wrapper.text().replace(/\s+/g, ' ')
+    expect(text).toContain('cartões de crédito')
+    expect(text).toContain('parcelamentos')
+    expect(text).toContain('recorrências')
+    wrapper.unmount()
+  })
+
   it('mantém a confirmação por senha antes de excluir', async () => {
     const { wrapper } = mountWithPlugins(DeleteAccountSection, { pinia: createPinia() })
     await wrapper.find('button').trigger('click')

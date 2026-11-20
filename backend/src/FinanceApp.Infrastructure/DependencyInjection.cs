@@ -1,5 +1,6 @@
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Options;
+using FinanceApp.Infrastructure.Background;
 using FinanceApp.Infrastructure.Email;
 using FinanceApp.Infrastructure.Persistence;
 using FinanceApp.Infrastructure.Security;
@@ -20,6 +21,7 @@ public static class DependencyInjection
         services.AddValidatedOptions<JwtOptions>(JwtOptions.SectionName, o => o.Validate());
         services.AddValidatedOptions<AppOptions>(AppOptions.SectionName, o => o.Validate());
         services.AddValidatedOptions<SmtpOptions>(SmtpOptions.SectionName, o => o.Validate());
+        services.AddValidatedOptions<RecurrenceOptions>(RecurrenceOptions.SectionName, o => o.Validate());
 
         // Lido de forma tardia (no resolve) para respeitar overrides de configuração (ex.: testes).
         services.AddDbContext<AppDbContext>((sp, options) =>
@@ -42,6 +44,9 @@ public static class DependencyInjection
         services.AddSingleton<ISecureTokenService, SecureTokenService>();
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+
+        // Geração periódica de ocorrências de recorrências (D-027); desligável por Recurrence__BackgroundEnabled.
+        services.AddHostedService<RecurrenceGenerationHostedService>();
 
         return services;
     }

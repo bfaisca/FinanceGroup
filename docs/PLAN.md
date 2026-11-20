@@ -18,7 +18,7 @@ Entregas incrementais, cada etapa testada e integrada antes da próxima. Status:
 Contratos: `API_CONTRACTS.md` §6–9 · Regras: `STATE_MACHINE.md`, D-014, D-019–D-023. Inclui também a rotina de exclusão de dados individuais (D-014).
 Contas + snapshots + saldo projetado; categorias (seed padrão, personalizadas, subcategorias); movimentações (CRUD, filtros, auditoria); pagamentos parciais/integrais e máquina de estados; dashboard individual.
 
-## Etapa 3 — Recursos financeiros 🟡
+## Etapa 3 — Recursos financeiros ✅
 Contratos: `API_CONTRACTS.md` §10–15 · Regras: D-025 a D-029, `STATE_MACHINE.md`.
 Cartões (regra D-003); parcelamentos (distribuição de centavos na última parcela); recorrências (horizonte D-010, idempotência); relatórios.
 

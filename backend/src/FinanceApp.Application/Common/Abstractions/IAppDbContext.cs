@@ -1,9 +1,13 @@
 using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Auth;
 using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Installments;
+using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace FinanceApp.Application.Common.Abstractions;
 
@@ -30,6 +34,15 @@ public interface IAppDbContext
     DbSet<TransactionPayment> TransactionPayments { get; }
 
     DbSet<TransactionAuditEntry> TransactionAuditEntries { get; }
+
+    DbSet<CreditCard> CreditCards { get; }
+
+    DbSet<InstallmentPlan> InstallmentPlans { get; }
+
+    DbSet<RecurrenceRule> RecurrenceRules { get; }
+
+    /// <summary>Rastreador de alterações (usado para descartar entidades pendentes após uma disputa de unicidade).</summary>
+    ChangeTracker ChangeTracker { get; }
 
     /// <exception cref="Exceptions.UniqueConstraintViolationException">Violação de índice único.</exception>
     /// <exception cref="Exceptions.ConcurrencyConflictException">Conflito de concorrência otimista.</exception>

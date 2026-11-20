@@ -1,4 +1,14 @@
-import type { AccountDto, CategoryDto, DashboardDto, TransactionDetailDto, TransactionDto } from '@/types/api'
+import type {
+  AccountDto,
+  CategoryDto,
+  CreditCardDto,
+  DashboardDto,
+  InstallmentPlanDetailDto,
+  InstallmentPlanDto,
+  RecurrenceDto,
+  TransactionDetailDto,
+  TransactionDto,
+} from '@/types/api'
 
 /** Fixtures usadas SOMENTE em testes (nunca importar em código de produção). */
 export function makeTransaction(partial: Partial<TransactionDto> = {}): TransactionDto {
@@ -24,6 +34,10 @@ export function makeTransaction(partial: Partial<TransactionDto> = {}): Transact
     notes: null,
     createdAt: '2026-11-05T10:00:00Z',
     updatedAt: '2026-11-05T10:00:00Z',
+    creditCardId: null,
+    creditCardName: null,
+    installment: null,
+    recurrenceRuleId: null,
     ...partial,
   }
 }
@@ -102,6 +116,114 @@ export function makeDashboard(partial: Partial<DashboardDto> = {}): DashboardDto
       { month: '2026-11', income: 5000, expense: 2000, result: 3000 },
     ],
     today: '2026-11-18',
+    creditCards: [],
+    ...partial,
+  }
+}
+
+export function makeCreditCard(partial: Partial<CreditCardDto> = {}): CreditCardDto {
+  return {
+    id: 'cc1',
+    name: 'Nubank Roxinho',
+    institution: 'Nu Pagamentos',
+    creditLimit: 5000,
+    closingDay: 5,
+    dueDay: 12,
+    accountId: 'a1',
+    accountName: 'Nubank',
+    isActive: true,
+    usedLimit: 1250,
+    availableLimit: 3750,
+    openInvoice: { closingDate: '2026-12-05', dueDate: '2026-12-12', amount: 480.9 },
+    createdAt: '2026-11-01T10:00:00Z',
+    updatedAt: '2026-11-01T10:00:00Z',
+    ...partial,
+  }
+}
+
+export function makePlan(partial: Partial<InstallmentPlanDto> = {}): InstallmentPlanDto {
+  return {
+    id: 'p1',
+    description: 'Notebook',
+    totalAmount: 3000,
+    installmentCount: 12,
+    firstDate: '2026-10-10',
+    categoryId: 'c-compras',
+    categoryName: 'Compras',
+    accountId: null,
+    accountName: null,
+    creditCardId: 'cc1',
+    creditCardName: 'Nubank Roxinho',
+    paymentMethod: 'CreditCard',
+    status: 'Open',
+    paidCount: 2,
+    openCount: 10,
+    canceledCount: 0,
+    paidAmount: 500,
+    remainingAmount: 2500,
+    nextDueDate: '2026-12-12',
+    createdAt: '2026-10-10T10:00:00Z',
+    ...partial,
+  }
+}
+
+export function makePlanDetail(partial: Partial<InstallmentPlanDetailDto> = {}): InstallmentPlanDetailDto {
+  return {
+    ...makePlan(),
+    installments: [
+      makeTransaction({
+        id: 'i1',
+        description: 'Notebook',
+        amount: 250,
+        paidAmount: 250,
+        remainingAmount: 0,
+        status: 'Paid',
+        transactionDate: '2026-10-10',
+        dueDate: '2026-11-12',
+        creditCardId: 'cc1',
+        creditCardName: 'Nubank Roxinho',
+        installment: { planId: 'p1', number: 1, count: 12 },
+      }),
+      makeTransaction({
+        id: 'i2',
+        description: 'Notebook',
+        amount: 250,
+        remainingAmount: 250,
+        status: 'Pending',
+        transactionDate: '2026-11-10',
+        dueDate: '2026-12-12',
+        creditCardId: 'cc1',
+        creditCardName: 'Nubank Roxinho',
+        installment: { planId: 'p1', number: 2, count: 12 },
+      }),
+    ],
+    ...partial,
+  }
+}
+
+export function makeRecurrence(partial: Partial<RecurrenceDto> = {}): RecurrenceDto {
+  return {
+    id: 'r1',
+    description: 'Netflix',
+    type: 'Expense',
+    amount: 55.9,
+    categoryId: 'c-lazer',
+    categoryName: 'Lazer',
+    accountId: null,
+    accountName: null,
+    creditCardId: 'cc1',
+    creditCardName: 'Nubank Roxinho',
+    paymentMethod: 'CreditCard',
+    notes: null,
+    frequency: 'Monthly',
+    interval: 1,
+    startDate: '2026-01-10',
+    endDate: null,
+    isActive: true,
+    nextOccurrenceDate: '2026-12-10',
+    generatedCount: 12,
+    createdAt: '2026-01-01T10:00:00Z',
+    updatedAt: '2026-01-01T10:00:00Z',
     ...partial,
   }
 }

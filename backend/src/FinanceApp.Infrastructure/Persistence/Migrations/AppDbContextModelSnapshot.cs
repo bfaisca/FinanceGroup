@@ -425,6 +425,270 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.CreditCards.CreditCard", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<int>("ClosingDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("closing_day");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("CreditLimit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("credit_limit");
+
+                    b.Property<int>("DueDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("due_day");
+
+                    b.Property<string>("Institution")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("institution");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_credit_cards");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_credit_cards_account_id");
+
+                    b.HasIndex("UserId", "IsActive")
+                        .HasDatabaseName("ix_credit_cards_user_id_is_active");
+
+                    b.ToTable("credit_cards", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_credit_cards_closing_day_range", "closing_day BETWEEN 1 AND 31");
+
+                            t.HasCheckConstraint("ck_credit_cards_credit_limit_non_negative", "credit_limit >= 0");
+
+                            t.HasCheckConstraint("ck_credit_cards_due_day_range", "due_day BETWEEN 1 AND 31");
+                        });
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Installments.InstallmentPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreditCardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("credit_card_id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly>("FirstDate")
+                        .HasColumnType("date")
+                        .HasColumnName("first_date");
+
+                    b.Property<int>("InstallmentCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("installment_count");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("payment_method");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_installment_plans");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_installment_plans_account_id");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_installment_plans_category_id");
+
+                    b.HasIndex("CreditCardId")
+                        .HasDatabaseName("ix_installment_plans_credit_card_id");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_installment_plans_user_id_created_at");
+
+                    b.ToTable("installment_plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_installment_plans_card_without_account", "credit_card_id IS NULL OR account_id IS NULL");
+
+                            t.HasCheckConstraint("ck_installment_plans_installment_count_range", "installment_count BETWEEN 2 AND 120");
+
+                            t.HasCheckConstraint("ck_installment_plans_total_amount_positive", "total_amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Recurrences.RecurrenceRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreditCardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("credit_card_id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("frequency");
+
+                    b.Property<int>("Interval")
+                        .HasColumnType("integer")
+                        .HasColumnName("interval");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("payment_method");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_recurrence_rules");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_recurrence_rules_account_id");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_recurrence_rules_category_id");
+
+                    b.HasIndex("CreditCardId")
+                        .HasDatabaseName("ix_recurrence_rules_credit_card_id");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("ix_recurrence_rules_is_active");
+
+                    b.HasIndex("UserId", "IsActive")
+                        .HasDatabaseName("ix_recurrence_rules_user_id_is_active");
+
+                    b.ToTable("recurrence_rules", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_recurrence_rules_amount_positive", "amount > 0");
+
+                            t.HasCheckConstraint("ck_recurrence_rules_card_expense_without_account", "credit_card_id IS NULL OR (type = 'Expense' AND account_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_recurrence_rules_end_date_after_start", "end_date IS NULL OR end_date >= start_date");
+
+                            t.HasCheckConstraint("ck_recurrence_rules_interval_range", "\"interval\" BETWEEN 1 AND 365");
+                        });
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -452,6 +716,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_user_id");
 
+                    b.Property<Guid?>("CreditCardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("credit_card_id");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -462,10 +730,26 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("due_date");
 
+                    b.Property<int?>("InstallmentNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("installment_number");
+
+                    b.Property<Guid?>("InstallmentPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("installment_plan_id");
+
+                    b.Property<bool>("IsManuallyEdited")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_manually_edited");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("notes");
+
+                    b.Property<DateOnly?>("OccurrenceDate")
+                        .HasColumnType("date")
+                        .HasColumnName("occurrence_date");
 
                     b.Property<decimal>("PaidAmount")
                         .ValueGeneratedOnAdd()
@@ -486,6 +770,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
                         .HasColumnName("payment_method");
+
+                    b.Property<Guid?>("RecurrenceRuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recurrence_rule_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -532,11 +820,29 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedByUserId", "TransactionDate")
                         .HasDatabaseName("ix_transactions_created_by_user_id_transaction_date");
 
+                    b.HasIndex("CreditCardId", "DueDate")
+                        .HasDatabaseName("ix_transactions_credit_card_id_due_date")
+                        .HasFilter("credit_card_id IS NOT NULL");
+
+                    b.HasIndex("InstallmentPlanId", "InstallmentNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_transactions_installment_plan_id_number");
+
+                    b.HasIndex("RecurrenceRuleId", "OccurrenceDate")
+                        .IsUnique()
+                        .HasDatabaseName("ux_transactions_recurrence_rule_id_occurrence_date");
+
                     b.ToTable("transactions", null, t =>
                         {
                             t.HasCheckConstraint("ck_transactions_amount_positive", "amount > 0");
 
+                            t.HasCheckConstraint("ck_transactions_credit_card_rules", "credit_card_id IS NULL OR (type = 'Expense' AND account_id IS NULL AND payment_method = 'CreditCard')");
+
                             t.HasCheckConstraint("ck_transactions_due_date_after_date", "due_date IS NULL OR due_date >= transaction_date");
+
+                            t.HasCheckConstraint("ck_transactions_installment_number_range", "installment_number IS NULL OR installment_number BETWEEN 1 AND 120");
+
+                            t.HasCheckConstraint("ck_transactions_origin_consistency", "(installment_plan_id IS NULL) = (installment_number IS NULL) AND (recurrence_rule_id IS NULL) = (occurrence_date IS NULL) AND NOT (installment_plan_id IS NOT NULL AND recurrence_rule_id IS NOT NULL)");
 
                             t.HasCheckConstraint("ck_transactions_paid_amount_range", "paid_amount >= 0 AND paid_amount <= amount");
 
@@ -759,6 +1065,94 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Navigation("ParentCategory");
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.CreditCards.CreditCard", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_credit_cards_accounts_account_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_credit_cards_users_user_id");
+
+                    b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Installments.InstallmentPlan", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_installment_plans_accounts_account_id");
+
+                    b.HasOne("FinanceApp.Domain.Categories.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_installment_plans_categories_category_id");
+
+                    b.HasOne("FinanceApp.Domain.CreditCards.CreditCard", "CreditCard")
+                        .WithMany()
+                        .HasForeignKey("CreditCardId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_installment_plans_credit_cards_credit_card_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_installment_plans_users_user_id");
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Category");
+
+                    b.Navigation("CreditCard");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Recurrences.RecurrenceRule", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_recurrence_rules_accounts_account_id");
+
+                    b.HasOne("FinanceApp.Domain.Categories.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_recurrence_rules_categories_category_id");
+
+                    b.HasOne("FinanceApp.Domain.CreditCards.CreditCard", "CreditCard")
+                        .WithMany()
+                        .HasForeignKey("CreditCardId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_recurrence_rules_credit_cards_credit_card_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_recurrence_rules_users_user_id");
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Category");
+
+                    b.Navigation("CreditCard");
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>
                 {
                     b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
@@ -781,15 +1175,37 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_transactions_users_created_by_user_id");
 
+                    b.HasOne("FinanceApp.Domain.CreditCards.CreditCard", "CreditCard")
+                        .WithMany()
+                        .HasForeignKey("CreditCardId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_credit_cards_credit_card_id");
+
+                    b.HasOne("FinanceApp.Domain.Installments.InstallmentPlan", "InstallmentPlan")
+                        .WithMany()
+                        .HasForeignKey("InstallmentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_installment_plans_installment_plan_id");
+
                     b.HasOne("FinanceApp.Domain.Users.User", null)
                         .WithMany()
                         .HasForeignKey("PaidByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_transactions_users_paid_by_user_id");
 
+                    b.HasOne("FinanceApp.Domain.Recurrences.RecurrenceRule", null)
+                        .WithMany()
+                        .HasForeignKey("RecurrenceRuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_recurrence_rules_recurrence_rule_id");
+
                     b.Navigation("Account");
 
                     b.Navigation("Category");
+
+                    b.Navigation("CreditCard");
+
+                    b.Navigation("InstallmentPlan");
                 });
 
             modelBuilder.Entity("FinanceApp.Domain.Transactions.TransactionAuditEntry", b =>

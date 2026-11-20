@@ -10,6 +10,7 @@ import FormField from '@/components/FormField.vue'
 import { useDebouncedCallback } from '@/composables/useDebouncedCallback'
 import { buildCategoryOptions } from '@/modules/categories/tree'
 import { useAccountsStore } from '@/stores/accounts'
+import { useCreditCardsStore } from '@/stores/creditCards'
 import { useCategoriesStore } from '@/stores/categories'
 import { enumOptions, STATUS_PRESENTATION, TRANSACTION_TYPE_LABELS } from '@/utils/labels'
 import { countActiveFilters, SORT_OPTIONS, type TransactionFilters } from '../filters'
@@ -28,6 +29,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: TransactionFilters] }>()
 
 const categories = useCategoriesStore()
 const accounts = useAccountsStore()
+const cards = useCreditCardsStore()
 
 const searchText = ref(props.modelValue.search ?? '')
 const expanded = ref(false)
@@ -90,6 +92,11 @@ const categoryGroups = computed<CategoryGroup[]>(() => {
 const accountOptions = computed(() => [
   { value: null, label: 'Todas as contas' },
   ...accounts.items.map((a) => ({ value: a.id as string | null, label: a.isActive ? a.name : `${a.name} (inativa)` })),
+])
+
+const cardOptions = computed(() => [
+  { value: null as string | null, label: 'Todos os cartões' },
+  ...cards.items.map((c) => ({ value: c.id as string | null, label: c.isActive ? c.name : `${c.name} (inativo)` })),
 ])
 
 function clearAll(): void {
@@ -164,6 +171,7 @@ function clearAll(): void {
             :options="typeOptions"
             option-label="label"
             option-value="value"
+            placeholder="Todos os tipos"
             fluid
             @update:model-value="
               update({
@@ -181,6 +189,7 @@ function clearAll(): void {
             :options="statusOptions"
             option-label="label"
             option-value="value"
+            placeholder="Todas as situações"
             fluid
             @update:model-value="update({ status: $event ?? undefined })"
           />
@@ -213,8 +222,26 @@ function clearAll(): void {
             :options="accountOptions"
             option-label="label"
             option-value="value"
+            placeholder="Todas as contas"
             fluid
             @update:model-value="update({ accountId: $event ?? undefined })"
+          />
+        </FormField>
+        <FormField
+          v-if="cards.items.length > 0 || modelValue.creditCardId"
+          id="filter-card"
+          v-slot="{ id }"
+          label="Cartão"
+        >
+          <Select
+            :input-id="id"
+            :model-value="modelValue.creditCardId ?? null"
+            :options="cardOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="Todos os cartões"
+            fluid
+            @update:model-value="update({ creditCardId: $event ?? undefined })"
           />
         </FormField>
         <FormField id="filter-sort" v-slot="{ id }" label="Ordenar por">
@@ -229,6 +256,38 @@ function clearAll(): void {
           />
         </FormField>
       </div>
+      <ul
+        v-if="modelValue.installmentPlanId || modelValue.recurrenceRuleId"
+        class="tx-filters__origin"
+        aria-label="Filtros de origem"
+      >
+        <li v-if="modelValue.installmentPlanId" data-testid="filter-plan">
+          <span><i class="pi pi-list-check" aria-hidden="true" /> Somente parcelas de um plano de parcelamento</span>
+          <Button
+            type="button"
+            label="Remover"
+            icon="pi pi-times"
+            size="small"
+            severity="secondary"
+            text
+            aria-label="Remover filtro de plano de parcelamento"
+            @click="update({ installmentPlanId: undefined })"
+          />
+        </li>
+        <li v-if="modelValue.recurrenceRuleId" data-testid="filter-rule">
+          <span><i class="pi pi-sync" aria-hidden="true" /> Somente ocorrências de uma regra de recorrência</span>
+          <Button
+            type="button"
+            label="Remover"
+            icon="pi pi-times"
+            size="small"
+            severity="secondary"
+            text
+            aria-label="Remover filtro de regra de recorrência"
+            @click="update({ recurrenceRuleId: undefined })"
+          />
+        </li>
+      </ul>
       <div class="tx-filters__actions">
         <Button
           type="button"
@@ -269,6 +328,23 @@ function clearAll(): void {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   gap: 0.75rem 1rem;
+}
+
+.tx-filters__origin {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tx-filters__origin li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .tx-filters__actions {

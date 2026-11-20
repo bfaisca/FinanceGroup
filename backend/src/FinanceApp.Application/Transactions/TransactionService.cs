@@ -5,6 +5,7 @@ using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Application.Common.Validation;
 using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.CreditCards;
 using FinanceApp.Domain.Transactions;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -56,6 +57,7 @@ public sealed class TransactionService(
 
         var category = await ResolveCategoryAsync(userId, request.CategoryId, type, cancellationToken).ConfigureAwait(false);
         var account = await ResolveAccountAsync(userId, request.AccountId, cancellationToken).ConfigureAwait(false);
+        var card = await ResolveCardAsync(userId, request.CreditCardId, cancellationToken).ConfigureAwait(false);
 
         var transaction = Transaction.Create(
             userId,
@@ -69,7 +71,8 @@ public sealed class TransactionService(
             request.TransactionDate!.Value,
             request.DueDate,
             request.Notes,
-            clock.UtcNow);
+            clock.UtcNow,
+            card);
 
         db.Transactions.Add(transaction);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -85,6 +88,31 @@ public sealed class TransactionService(
         var category = await ResolveCategoryAsync(userId, request.CategoryId, transaction.Type, cancellationToken).ConfigureAwait(false);
         var account = await ResolveAccountAsync(userId, request.AccountId, cancellationToken).ConfigureAwait(false);
 
+        // O cartão é imutável (D-025): omitir/nulo mantém; um valor diferente do atual → 422.
+        if (request.CreditCardId is { } requestedCard && requestedCard != transaction.CreditCardId)
+        {
+            throw new BusinessRuleException("O cartão de crédito de uma movimentação não pode ser alterado.");
+        }
+
+        // Compra no cartão: sem conta; o vencimento é calculado pelo backend. Reenviar o vencimento atual é tolerado.
+        var dueDate = request.DueDate;
+        if (transaction.CreditCardId is not null)
+        {
+            if (request.AccountId is not null)
+            {
+                throw new ValidationException("accountId", "Compras no cartão não aceitam conta: a conta é a associada ao cartão.");
+            }
+
+            if (request.DueDate is not null && request.DueDate != transaction.DueDate)
+            {
+                throw transaction.IsInstallment
+                    ? new BusinessRuleException("O vencimento de uma parcela no cartão não pode ser alterado.")
+                    : new ValidationException("dueDate", "O vencimento de compras no cartão é calculado automaticamente e não pode ser informado.");
+            }
+
+            dueDate = null;
+        }
+
         transaction.Update(
             userId,
             request.Description,
@@ -93,10 +121,11 @@ public sealed class TransactionService(
             account,
             request.PaymentMethod,
             request.TransactionDate!.Value,
-            request.DueDate,
+            dueDate,
             request.Notes,
             request.Status,
-            clock.UtcNow);
+            clock.UtcNow,
+            transaction.CreditCard);
 
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return await GetDetailAsync(id, cancellationToken).ConfigureAwait(false);
@@ -236,7 +265,23 @@ public sealed class TransactionService(
 
         if (filter.AccountId is { } accountId)
         {
-            query = query.Where(t => t.AccountId == accountId);
+            // Conta efetiva (D-025): a da movimentação ou a do cartão da compra.
+            query = query.Where(t => t.AccountId == accountId || (t.CreditCardId != null && t.CreditCard!.AccountId == accountId));
+        }
+
+        if (filter.CreditCardId is { } creditCardId)
+        {
+            query = query.Where(t => t.CreditCardId == creditCardId);
+        }
+
+        if (filter.InstallmentPlanId is { } planId)
+        {
+            query = query.Where(t => t.InstallmentPlanId == planId);
+        }
+
+        if (filter.RecurrenceRuleId is { } ruleId)
+        {
+            query = query.Where(t => t.RecurrenceRuleId == ruleId);
         }
 
         if (filter.Status is { } status)
@@ -307,7 +352,7 @@ public sealed class TransactionService(
 
         if (withReferences)
         {
-            query = query.Include(t => t.Category).Include(t => t.Account);
+            query = query.Include(t => t.Category).Include(t => t.Account).Include(t => t.CreditCard);
         }
 
         return await query.FirstOrDefaultAsync(t => t.Id == id && t.CreatedByUserId == userId, cancellationToken).ConfigureAwait(false)
@@ -335,6 +380,17 @@ public sealed class TransactionService(
 
         return await db.Accounts.FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId, cancellationToken).ConfigureAwait(false)
             ?? throw new ValidationException("accountId", "Conta não encontrada.");
+    }
+
+    private async Task<CreditCard?> ResolveCardAsync(Guid userId, Guid? creditCardId, CancellationToken cancellationToken)
+    {
+        if (creditCardId is not { } id)
+        {
+            return null;
+        }
+
+        return await db.CreditCards.FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId, cancellationToken).ConfigureAwait(false)
+            ?? throw new ValidationException("creditCardId", "Cartão de crédito não encontrado.");
     }
 
     private static NotFoundException TransactionNotFound() => new("Movimentação não encontrada.");

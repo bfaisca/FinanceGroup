@@ -21,6 +21,9 @@ export interface TransactionFormValues {
   categoryId: string | null
   accountId: string | null
   paymentMethod: PaymentMethod | null
+  /** Etapa 3: "Pago com" — conta/dinheiro ou cartão de crédito (só despesas). */
+  payWith: 'account' | 'card'
+  creditCardId: string | null
   /** `null` na edição = manter a situação atual. */
   status: TransactionInitialStatus | null
   transactionDate: DateOnlyString | null
@@ -33,6 +36,7 @@ export const TRANSACTION_FORM_FIELDS = [
   'amount',
   'categoryId',
   'accountId',
+  'creditCardId',
   'paymentMethod',
   'status',
   'transactionDate',
@@ -71,10 +75,14 @@ export function validateTransactionForm(
 
   if (!values.categoryId) errors.categoryId = 'Escolha uma categoria.'
 
+  const withCard = usesCard(values)
+  if (withCard && !values.creditCardId) errors.creditCardId = 'Escolha o cartão de crédito.'
+
   if (!values.transactionDate || !parseDateOnly(values.transactionDate)) {
     errors.transactionDate = 'Informe a data da movimentação.'
   }
-  if (values.dueDate) {
+  // Com cartão o vencimento é calculado pela fatura (backend): não é digitado nem validado aqui.
+  if (!withCard && values.dueDate) {
     if (!parseDateOnly(values.dueDate)) errors.dueDate = 'Informe um vencimento válido.'
     else if (values.transactionDate && values.dueDate < values.transactionDate) {
       errors.dueDate = 'O vencimento deve ser igual ou posterior à data da movimentação.'
@@ -86,17 +94,29 @@ export function validateTransactionForm(
   return errors
 }
 
+/** Compra no cartão: só despesas (§10). */
+export function usesCard(values: Pick<TransactionFormValues, 'type' | 'payWith'>): boolean {
+  return values.type === 'Expense' && values.payWith === 'card'
+}
+
 function sharedFields(values: TransactionFormValues) {
   const cents = parseMoneyToCents(values.amount)
-  return {
+  const common = {
     description: values.description.trim(),
     amount: fromCents(cents ?? 0),
     categoryId: values.categoryId ?? '',
+    transactionDate: values.transactionDate ?? '',
+    notes: values.notes.trim() || null,
+  }
+  if (usesCard(values)) {
+    // §10/D-025: com cartão `accountId` e `dueDate` NÃO podem ser enviados; método fixo `CreditCard`.
+    return { ...common, creditCardId: values.creditCardId, paymentMethod: 'CreditCard' as const }
+  }
+  return {
+    ...common,
     accountId: values.accountId,
     paymentMethod: values.paymentMethod,
-    transactionDate: values.transactionDate ?? '',
     dueDate: values.dueDate,
-    notes: values.notes.trim() || null,
   }
 }
 

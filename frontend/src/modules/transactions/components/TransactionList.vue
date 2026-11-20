@@ -13,6 +13,7 @@ import type { TransactionDto } from '@/types/api'
 import { formatCurrency, formatDate } from '@/utils/format'
 import { PAGE_SIZE_OPTIONS } from '../filters'
 import TransactionAmount from './TransactionAmount.vue'
+import TransactionOriginBadges from './TransactionOriginBadges.vue'
 import TransactionStatusChip from './TransactionStatusChip.vue'
 
 const props = withDefaults(
@@ -130,6 +131,7 @@ function summary(tx: TransactionDto): string {
               :color="data.categoryColor"
               :icon="data.categoryIcon"
             />
+            <TransactionOriginBadges class="tx-list__origin" :transaction="data" linked />
           </template>
         </Column>
         <Column v-if="!hideAccount" header="Conta">
@@ -174,6 +176,10 @@ function summary(tx: TransactionDto): string {
               />
               <TransactionStatusChip :status="tx.status" />
             </span>
+            <TransactionOriginBadges
+              v-if="tx.creditCardName || tx.installment || tx.recurrenceRuleId"
+              :transaction="tx"
+            />
             <span class="tx-card__meta">
               <span>Data: {{ formatDate(tx.transactionDate) }}</span>
               <span v-if="tx.dueDate">Vencimento: {{ formatDate(tx.dueDate) }}</span>
@@ -232,6 +238,11 @@ function summary(tx: TransactionDto): string {
   margin-top: 0.25rem;
   font-size: 0.8125rem;
   color: var(--gf-text-muted);
+}
+
+.tx-list__origin {
+  display: flex;
+  margin-top: 0.375rem;
 }
 
 .tx-list__remaining {

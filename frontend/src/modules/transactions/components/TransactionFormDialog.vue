@@ -10,6 +10,7 @@ import type {
   TransactionType,
   UpdateTransactionRequest,
 } from '@/types/api'
+import { formatDate } from '@/utils/format'
 import { toAppError } from '@/utils/problem'
 import { transactionService } from '../services/transactionService'
 import { TRANSACTION_FORM_FIELDS } from '../validation'
@@ -60,7 +61,12 @@ async function onSubmit(request: CreateTransactionRequest | UpdateTransactionReq
     toast.add({
       severity: 'success',
       summary: isEdit.value ? 'Movimentação atualizada' : 'Movimentação criada',
-      life: 3500,
+      // Compra no cartão: o vencimento da fatura é calculado pelo backend e só exibido aqui.
+      detail:
+        saved.creditCardId && saved.dueDate
+          ? `Vencimento da fatura: ${formatDate(saved.dueDate)}${saved.creditCardName ? ` (${saved.creditCardName})` : ''}.`
+          : undefined,
+      life: saved.creditCardId ? 6000 : 3500,
     })
     emit('saved', saved)
   } catch (error) {

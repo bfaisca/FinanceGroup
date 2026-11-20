@@ -25,6 +25,17 @@ internal static class TransactionRules
         rule.Must(s => s is null or TransactionStatus.Planned or TransactionStatus.Pending)
             .WithMessage("O estado deve ser Planned (previsto) ou Pending (pendente).");
 
+    /// <summary>Com cartão (D-025): <c>paymentMethod</c> deve ser nulo ou <c>CreditCard</c> (o backend força <c>CreditCard</c>).</summary>
+    public static IRuleBuilderOptions<T, PaymentMethod?> CardPaymentMethod<T>(
+        this IRuleBuilder<T, PaymentMethod?> rule,
+        Func<T, bool> hasCard) =>
+        rule.Must((x, m) => !hasCard(x) || m is null or PaymentMethod.CreditCard)
+            .WithMessage("Compras no cartão devem usar a forma de pagamento Cartão de crédito (CreditCard).");
+
+    public static IRuleBuilderOptions<T, Guid?> NoAccountWithCard<T>(this IRuleBuilder<T, Guid?> rule, Func<T, bool> hasCard) =>
+        rule.Must((x, accountId) => accountId is null || !hasCard(x))
+            .WithMessage("Compras no cartão não aceitam conta: a conta é a associada ao cartão.");
+
     public static IRuleBuilderOptions<T, DateOnly?> RequiredDate<T>(this IRuleBuilder<T, DateOnly?> rule, string message) =>
         rule.NotNull().WithMessage(message);
 }
@@ -47,6 +58,16 @@ public sealed class CreateTransactionRequestValidator : AbstractValidator<Create
             .Must((x, due) => due is null || x.TransactionDate is null || due.Value >= x.TransactionDate.Value)
             .WithMessage("O vencimento não pode ser anterior à data da movimentação.");
         RuleFor(x => x.Notes).TransactionNotes();
+
+        // Compra no cartão (D-025): só despesas; conta e vencimento não podem ser enviados; vencimento calculado pelo backend.
+        RuleFor(x => x.CreditCardId)
+            .Must((x, cardId) => cardId is null || x.Type == TransactionType.Expense)
+            .WithMessage("Somente despesas podem ser lançadas no cartão de crédito.");
+        RuleFor(x => x.AccountId).NoAccountWithCard(x => x.CreditCardId is not null);
+        RuleFor(x => x.DueDate)
+            .Must((x, due) => due is null || x.CreditCardId is null)
+            .WithMessage("O vencimento de compras no cartão é calculado automaticamente e não pode ser informado.");
+        RuleFor(x => x.PaymentMethod).CardPaymentMethod(x => x.CreditCardId is not null);
     }
 }
 
@@ -64,6 +85,8 @@ public sealed class UpdateTransactionRequestValidator : AbstractValidator<Update
             .Must((x, due) => due is null || x.TransactionDate is null || due.Value >= x.TransactionDate.Value)
             .WithMessage("O vencimento não pode ser anterior à data da movimentação.");
         RuleFor(x => x.Notes).TransactionNotes();
+        RuleFor(x => x.AccountId).NoAccountWithCard(x => x.CreditCardId is not null);
+        RuleFor(x => x.PaymentMethod).CardPaymentMethod(x => x.CreditCardId is not null);
     }
 }
 

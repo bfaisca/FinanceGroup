@@ -3,6 +3,9 @@ using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Auth;
 using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Installments;
+using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +32,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<TransactionPayment> TransactionPayments => Set<TransactionPayment>();
 
     public DbSet<TransactionAuditEntry> TransactionAuditEntries => Set<TransactionAuditEntry>();
+
+    public DbSet<CreditCard> CreditCards => Set<CreditCard>();
+
+    public DbSet<InstallmentPlan> InstallmentPlans => Set<InstallmentPlan>();
+
+    public DbSet<RecurrenceRule> RecurrenceRules => Set<RecurrenceRule>();
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {

@@ -45,9 +45,9 @@ public class TransactionsApiTests(ApiFactory factory)
         var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ApiUser.Json);
         Assert.Equal(
             [
-                "accountId", "accountName", "amount", "categoryColor", "categoryIcon", "categoryId", "categoryName", "createdAt", "description",
-                "dueDate", "id", "notes", "paidAmount", "paidAt", "parentCategoryName", "paymentMethod", "payments", "remainingAmount",
-                "status", "transactionDate", "type", "updatedAt",
+                "accountId", "accountName", "amount", "categoryColor", "categoryIcon", "categoryId", "categoryName", "createdAt", "creditCardId",
+                "creditCardName", "description", "dueDate", "id", "installment", "notes", "paidAmount", "paidAt", "parentCategoryName",
+                "paymentMethod", "payments", "recurrenceRuleId", "remainingAmount", "status", "transactionDate", "type", "updatedAt",
             ],
             json.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal));
         Assert.Equal("Jantar", json.GetProperty("description").GetString());

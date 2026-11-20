@@ -47,3 +47,36 @@ describe('paidPercentage', () => {
     expect(paidPercentage(10, 0)).toBe(0)
   })
 })
+
+describe('availableActions — parcelas e ocorrências (Etapa 3)', () => {
+  it('parcela não pode ser excluída: só cancelar, com motivo "installment"', () => {
+    const actions = availableActions({
+      status: 'Pending',
+      paidAmount: 0,
+      remainingAmount: 100,
+      installment: { planId: 'p1', number: 1, count: 3 },
+    })
+    expect(actions.canDelete).toBe(false)
+    expect(actions.deleteBlockedByOrigin).toBe('installment')
+    expect(actions.deleteBlockedByPayments).toBe(false)
+    expect(actions.canCancel).toBe(true)
+    expect(actions.canEdit).toBe(true)
+  })
+
+  it('ocorrência de recorrência não pode ser excluída', () => {
+    const actions = availableActions({
+      status: 'Planned',
+      paidAmount: 0,
+      remainingAmount: 100,
+      recurrenceRuleId: 'r1',
+    })
+    expect(actions.canDelete).toBe(false)
+    expect(actions.deleteBlockedByOrigin).toBe('recurrence')
+  })
+
+  it('movimentação comum continua podendo ser excluída', () => {
+    const actions = availableActions({ status: 'Pending', paidAmount: 0, remainingAmount: 100 })
+    expect(actions.canDelete).toBe(true)
+    expect(actions.deleteBlockedByOrigin).toBeNull()
+  })
+})

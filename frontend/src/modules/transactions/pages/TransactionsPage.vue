@@ -5,6 +5,7 @@ import Button from 'primevue/button'
 import PageHeader from '@/components/PageHeader.vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useCategoriesStore } from '@/stores/categories'
+import { useCreditCardsStore } from '@/stores/creditCards'
 import type { TransactionDetailDto, TransactionDto } from '@/types/api'
 import TransactionDetailDrawer from '../components/TransactionDetailDrawer.vue'
 import TransactionFiltersBar from '../components/TransactionFiltersBar.vue'
@@ -23,6 +24,7 @@ const route = useRoute()
 const router = useRouter()
 const categories = useCategoriesStore()
 const accounts = useAccountsStore()
+const cards = useCreditCardsStore()
 
 // A URL é a fonte dos filtros: links compartilháveis e navegação vindas do dashboard/contas.
 const filters = computed(() => parseTransactionFilters(route.query))
@@ -82,6 +84,7 @@ function consumeNewParam(): void {
 onMounted(() => {
   void categories.load()
   void accounts.load()
+  void cards.load()
   consumeNewParam()
 })
 

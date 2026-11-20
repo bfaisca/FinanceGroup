@@ -4,6 +4,7 @@ import { authService } from '@/modules/auth/services/authService'
 import { userService } from '@/modules/settings/services/userService'
 import { useAccountsStore } from '@/stores/accounts'
 import { useCategoriesStore } from '@/stores/categories'
+import { useCreditCardsStore } from '@/stores/creditCards'
 import type {
   AuthResponse,
   ChangePasswordRequest,
@@ -38,6 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Dados em cache pertencem ao usuário anterior: nunca devem aparecer para outra sessão.
     useAccountsStore().reset()
     useCategoriesStore().reset()
+    useCreditCardsStore().reset()
     accessToken.value = null
     accessTokenExpiresAt.value = null
     user.value = null

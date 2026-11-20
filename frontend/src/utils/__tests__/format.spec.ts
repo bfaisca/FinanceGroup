@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { formatCurrency, formatDate, formatDateTime, parseDateOnly, toDateOnly } from '../format'
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatPercent,
+  parseDateOnly,
+  ratioPercent,
+  toDateOnly,
+} from '../format'
 
 // Intl usa espaço não separável entre "R$" e o número.
 const normalize = (s: string) => s.replace(/ | /g, ' ')
@@ -64,5 +72,19 @@ describe('datas YYYY-MM-DD', () => {
     expect(formatDateTime('2026-11-18T22:40:00Z')).toMatch(/\d{2}\/\d{2}\/\d{4}/)
     expect(formatDateTime('invalid')).toBe('—')
     expect(formatDateTime(undefined)).toBe('—')
+  })
+})
+
+describe('formatPercent / ratioPercent (Etapa 3)', () => {
+  it('formata percentual com 1 casa em pt-BR', () => {
+    expect(formatPercent(75)).toBe('75,0%')
+    expect(formatPercent(33.333)).toBe('33,3%')
+    expect(formatPercent(null)).toBe('—')
+  })
+
+  it('calcula proporção em centavos e ignora total não positivo', () => {
+    expect(ratioPercent(1250, 5000)).toBe(25)
+    expect(ratioPercent(0.1, 0.3)).toBeCloseTo(33.33, 1)
+    expect(ratioPercent(10, 0)).toBeNull()
   })
 })

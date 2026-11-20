@@ -66,3 +66,20 @@ export function formatDateTime(value: IsoDateTimeString | null | undefined): str
   if (Number.isNaN(date.getTime())) return '—'
   return new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'short' }).format(date)
 }
+
+const percentFormatter = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
+/** Formata percentual (0–100 vindo da API) com 1 casa — ex.: 75 → "75,0%". */
+export function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  return `${percentFormatter.format(value)}%`
+}
+
+/**
+ * Proporção `part/total` em % para barras de progresso (apenas apresentação).
+ * Retorna `null` quando o total não é positivo (ex.: limite zero).
+ */
+export function ratioPercent(part: number, total: number): number | null {
+  if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return null
+  return (Math.round(part * 100) / Math.round(total * 100)) * 100
+}

@@ -1,5 +1,5 @@
 /**
- * Tipos espelhando exatamente docs/API_CONTRACTS.md (v1.0 — Etapa 1).
+ * Tipos espelhando exatamente docs/API_CONTRACTS.md (v1.2 — Etapas 1 a 3).
  * Não adicionar campos que não constem no contrato.
  */
 
@@ -240,6 +240,19 @@ export interface TransactionDto {
   notes: string | null
   createdAt: IsoDateTimeString
   updatedAt: IsoDateTimeString
+  // ---- Etapa 3 (§10, aditivo) ----
+  creditCardId: Uuid | null
+  creditCardName: string | null
+  installment: TransactionInstallment | null
+  /** Não nulo = ocorrência de recorrência. */
+  recurrenceRuleId: Uuid | null
+}
+
+/** §10: parcela de um plano de parcelamento. */
+export interface TransactionInstallment {
+  planId: Uuid
+  number: number
+  count: number
 }
 
 export interface TransactionPaymentDto {
@@ -284,6 +297,8 @@ export interface CreateTransactionRequest {
   transactionDate: DateOnlyString
   dueDate?: DateOnlyString | null
   notes?: string | null
+  /** §10: só em despesas; com cartão, `accountId` e `dueDate` não são enviados. Imutável após criar. */
+  creditCardId?: Uuid | null
 }
 
 /** Mesmos campos da criação, exceto `type` (imutável); `status` opcional (Planned | Pending). */
@@ -311,6 +326,10 @@ export interface TransactionListQuery extends PageQuery {
   /** Status apresentado; aceita `Overdue`. */
   status?: TransactionStatus
   search?: string
+  // ---- Etapa 3 (§10) ----
+  creditCardId?: Uuid
+  installmentPlanId?: Uuid
+  recurrenceRuleId?: Uuid
 }
 
 // ---------- 9. Dashboard ----------
@@ -343,9 +362,244 @@ export interface DashboardDto {
   upcomingDues: TransactionDto[]
   monthlyHistory: { month: string; income: number; expense: number; result: number }[]
   today: DateOnlyString
+  /** §15 (Etapa 3): cartões ATIVOS, por nome. */
+  creditCards: DashboardCreditCard[]
+}
+
+export interface DashboardCreditCard {
+  id: Uuid
+  name: string
+  creditLimit: number
+  usedLimit: number
+  availableLimit: number
+  openInvoice: InvoiceSummary
 }
 
 export interface DashboardQuery {
   from: DateOnlyString
   to: DateOnlyString
+}
+
+// ---------- 11. Cartões de crédito (Etapa 3) ----------
+
+/** Resumo simplificado da fatura que recebe compras feitas hoje (D-025); não é gestão de faturas. */
+export interface InvoiceSummary {
+  closingDate: DateOnlyString
+  dueDate: DateOnlyString
+  amount: number
+}
+
+export interface CreditCardDto {
+  id: Uuid
+  name: string
+  institution: string | null
+  creditLimit: number
+  /** 1–31 */
+  closingDay: number
+  /** 1–31 */
+  dueDay: number
+  accountId: Uuid | null
+  accountName: string | null
+  isActive: boolean
+  /** D-025: soma do restante de tudo que está em aberto. */
+  usedLimit: number
+  /** `creditLimit - usedLimit`; negativo = limite excedido. */
+  availableLimit: number
+  openInvoice: InvoiceSummary
+  createdAt: IsoDateTimeString
+  updatedAt: IsoDateTimeString
+}
+
+/** POST e PUT têm o mesmo corpo. */
+export interface CreditCardRequest {
+  name: string
+  institution?: string | null
+  creditLimit: number
+  closingDay: number
+  dueDay: number
+  accountId?: Uuid | null
+}
+
+// ---------- 12. Parcelamentos (Etapa 3) ----------
+
+export type InstallmentPlanStatus = 'Open' | 'Completed' | 'Canceled'
+
+export interface InstallmentPlanDto {
+  id: Uuid
+  description: string
+  totalAmount: number
+  installmentCount: number
+  firstDate: DateOnlyString
+  categoryId: Uuid
+  categoryName: string
+  accountId: Uuid | null
+  accountName: string | null
+  creditCardId: Uuid | null
+  creditCardName: string | null
+  paymentMethod: PaymentMethod | null
+  status: InstallmentPlanStatus
+  paidCount: number
+  openCount: number
+  canceledCount: number
+  /** Somas de parcelas não canceladas. */
+  paidAmount: number
+  remainingAmount: number
+  /** Menor data efetiva (`dueDate ?? transactionDate`) de parcela em aberto. */
+  nextDueDate: DateOnlyString | null
+  createdAt: IsoDateTimeString
+}
+
+/** Parcelas em ordem por número. */
+export interface InstallmentPlanDetailDto extends InstallmentPlanDto {
+  installments: TransactionDto[]
+}
+
+export interface CreateInstallmentPlanRequest {
+  description: string
+  totalAmount: number
+  installmentCount: number
+  firstDate: DateOnlyString
+  categoryId: Uuid
+  accountId?: Uuid | null
+  creditCardId?: Uuid | null
+  paymentMethod?: PaymentMethod | null
+  notes?: string | null
+}
+
+export type InstallmentPlanSortField = 'firstDate' | 'description' | 'totalAmount' | 'createdAt'
+
+export interface InstallmentPlanListQuery extends PageQuery {
+  status?: InstallmentPlanStatus
+}
+
+// ---------- 13. Recorrências (Etapa 3) ----------
+
+export interface RecurrenceDto {
+  id: Uuid
+  description: string
+  type: TransactionType
+  amount: number
+  categoryId: Uuid
+  categoryName: string
+  accountId: Uuid | null
+  accountName: string | null
+  creditCardId: Uuid | null
+  creditCardName: string | null
+  paymentMethod: PaymentMethod | null
+  notes: string | null
+  frequency: RecurrenceFrequency
+  /** D-027; para `Custom` = dias. */
+  interval: number
+  startDate: DateOnlyString
+  endDate: DateOnlyString | null
+  isActive: boolean
+  /** Próxima ocorrência futura (>= hoje); `null` se encerrada/inativa. */
+  nextOccurrenceDate: DateOnlyString | null
+  /** Ocorrências já geradas (inclui canceladas). */
+  generatedCount: number
+  createdAt: IsoDateTimeString
+  updatedAt: IsoDateTimeString
+}
+
+export interface CreateRecurrenceRequest {
+  description: string
+  type: TransactionType
+  amount: number
+  categoryId: Uuid
+  accountId?: Uuid | null
+  creditCardId?: Uuid | null
+  paymentMethod?: PaymentMethod | null
+  notes?: string | null
+  frequency: RecurrenceFrequency
+  /** Padrão 1. */
+  interval?: number
+  startDate: DateOnlyString
+  endDate?: DateOnlyString | null
+}
+
+/** Mesmos campos, exceto `type` e `startDate` (imutáveis). */
+export type UpdateRecurrenceRequest = Omit<CreateRecurrenceRequest, 'type' | 'startDate'>
+
+// ---------- 14. Relatórios (Etapa 3) ----------
+
+export interface ReportPeriod {
+  from: DateOnlyString
+  to: DateOnlyString
+}
+
+export interface ReportTotals {
+  income: number
+  expense: number
+  result: number
+  receivedIncome: number
+  pendingIncome: number
+  paidExpense: number
+  pendingExpense: number
+}
+
+export type ReportGroupBy = 'day' | 'month'
+
+export interface ReportSummaryDto {
+  period: ReportPeriod
+  totals: ReportTotals
+  /** `key` = `YYYY-MM-DD` ou `YYYY-MM`, cronológico. */
+  series: { key: string; income: number; expense: number; result: number }[]
+}
+
+export interface ReportByCategoryDto {
+  period: ReportPeriod
+  type: TransactionType
+  total: number
+  items: {
+    categoryId: Uuid
+    categoryName: string
+    color: string | null
+    total: number
+    percentage: number
+    /** Percentuais relativos ao total da categoria RAIZ. */
+    subcategories: { categoryId: Uuid; categoryName: string; total: number; percentage: number }[]
+  }[]
+}
+
+export interface ReportByAccountDto {
+  period: ReportPeriod
+  type: TransactionType
+  total: number
+  /** Sem conta → `accountId: null`, `accountName: "Sem conta"`. */
+  items: { accountId: Uuid | null; accountName: string; total: number; percentage: number }[]
+}
+
+export interface ReportByPaymentMethodDto {
+  period: ReportPeriod
+  type: TransactionType
+  total: number
+  /** `null` = "Não informado". */
+  items: { paymentMethod: PaymentMethod | null; total: number; percentage: number }[]
+}
+
+export interface ReportMonthlyEvolutionDto {
+  items: { month: string; income: number; expense: number; result: number; cumulativeResult: number }[]
+}
+
+export interface ReportInstallmentsDto {
+  openPlans: number
+  totalRemaining: number
+  commitmentByMonth: { month: string; amount: number; installmentsCount: number }[]
+  /** Planos `Open` por `nextDueDate`. */
+  plans: InstallmentPlanDto[]
+}
+
+export interface ReportRecurrencesDto {
+  activeRules: number
+  upcomingByMonth: { month: string; income: number; expense: number }[]
+  rules: {
+    id: Uuid
+    description: string
+    type: TransactionType
+    amount: number
+    frequency: RecurrenceFrequency
+    interval: number
+    nextOccurrenceDate: DateOnlyString | null
+    upcomingTotal12m: number
+  }[]
 }

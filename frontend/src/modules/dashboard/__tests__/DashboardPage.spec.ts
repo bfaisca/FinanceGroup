@@ -25,6 +25,7 @@ async function mountDashboard(url = '/dashboard') {
       { path: '/dashboard', name: 'dashboard', component: DashboardPage },
       { path: '/accounts', name: 'accounts', component: { template: '<div />' } },
       { path: '/transactions', name: 'transactions', component: { template: '<div />' } },
+      { path: '/credit-cards', name: 'credit-cards', component: { template: '<div />' } },
     ],
   })
   await router.push(url)
@@ -80,6 +81,60 @@ describe('DashboardPage', () => {
     await flushPromises()
     expect(router.currentRoute.value.name).toBe('transactions')
     expect(router.currentRoute.value.query.open).toBe('late')
+    wrapper.unmount()
+  })
+
+  it('"Resumo dos cartões": limite, utilizado, fatura aberta e limite excedido sem depender de cor', async () => {
+    mock.onGet('/dashboard').reply(
+      200,
+      makeDashboard({
+        creditCards: [
+          {
+            id: 'cc1',
+            name: 'Nubank Roxinho',
+            creditLimit: 5000,
+            usedLimit: 1500,
+            availableLimit: 3500,
+            openInvoice: { closingDate: '2026-11-25', dueDate: '2026-12-05', amount: 800 },
+          },
+          {
+            id: 'cc2',
+            name: 'Itaú Platinum',
+            creditLimit: 1000,
+            usedLimit: 1200,
+            availableLimit: -200,
+            openInvoice: { closingDate: '2026-11-20', dueDate: '2026-12-01', amount: 1200 },
+          },
+        ],
+      }),
+    )
+    const { wrapper, router } = await mountDashboard('/dashboard?from=2026-11-01&to=2026-11-30')
+    const cards = wrapper.findAll('[data-testid="dashboard-card"]')
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.text()).toContain('Nubank Roxinho')
+    expect(cards[0]!.text()).toMatch(/Fatura aberta:\s*R\$\s*800,00/)
+    expect(cards[0]!.text()).toContain('vence em 05/12/2026')
+    expect(cards[0]!.find('[data-testid="limit-exceeded"]').exists()).toBe(false)
+    expect(cards[1]!.find('[data-testid="limit-exceeded"]').text()).toMatch(/Limite excedido em R\$\s*200,00/)
+    expect(wrapper.find('[data-testid="no-cards-hint"]').exists()).toBe(false)
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('Ver cartões'))!
+      .trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('credit-cards')
+    wrapper.unmount()
+  })
+
+  it('sem cartões ativos orienta a cadastrar (e tolera API sem o campo `creditCards`)', async () => {
+    const dashboard = makeDashboard()
+    delete (dashboard as { creditCards?: unknown }).creditCards
+    mock.onGet('/dashboard').reply(200, dashboard)
+    const { wrapper } = await mountDashboard('/dashboard?from=2026-11-01&to=2026-11-30')
+    const hint = wrapper.find('[data-testid="no-cards-hint"]')
+    expect(hint.text()).toContain('Você ainda não tem cartões de crédito ativos')
+    expect(hint.find('a').attributes('href')).toBe('/credit-cards')
     wrapper.unmount()
   })
 

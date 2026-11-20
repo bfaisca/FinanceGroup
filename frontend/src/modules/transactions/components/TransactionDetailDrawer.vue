@@ -24,6 +24,7 @@ import { transactionService } from '../services/transactionService'
 import PaymentFormDialog from './PaymentFormDialog.vue'
 import TransactionAmount from './TransactionAmount.vue'
 import TransactionHistoryList from './TransactionHistoryList.vue'
+import TransactionOriginBadges from './TransactionOriginBadges.vue'
 import TransactionStatusChip from './TransactionStatusChip.vue'
 
 type PendingConfirm =
@@ -251,6 +252,16 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                   <dt>Conta</dt>
                   <dd>{{ detail.accountName ?? '—' }}</dd>
                 </div>
+                <div v-if="detail.creditCardName">
+                  <dt>Cartão de crédito</dt>
+                  <dd data-testid="detail-card">{{ detail.creditCardName }}</dd>
+                </div>
+                <div v-if="detail.installment || detail.recurrenceRuleId">
+                  <dt>Origem</dt>
+                  <dd>
+                    <TransactionOriginBadges :transaction="{ ...detail, creditCardName: null }" linked />
+                  </dd>
+                </div>
                 <div>
                   <dt>Método de pagamento</dt>
                   <dd>{{ detail.paymentMethod ? PAYMENT_METHOD_LABELS[detail.paymentMethod] : '—' }}</dd>
@@ -260,7 +271,7 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                   <dd>{{ formatDate(detail.transactionDate) }}</dd>
                 </div>
                 <div>
-                  <dt>Vencimento</dt>
+                  <dt>{{ detail.creditCardId ? 'Vencimento da fatura' : 'Vencimento' }}</dt>
                   <dd>{{ formatDate(detail.dueDate) }}</dd>
                 </div>
                 <div v-if="detail.paidAt">
@@ -327,6 +338,22 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
               <p v-if="actions.deleteBlockedByPayments" class="tx-drawer__muted" data-testid="delete-hint">
                 <i class="pi pi-info-circle" aria-hidden="true" />
                 Com pagamentos registrados não é possível excluir; você pode cancelar a movimentação.
+              </p>
+              <p v-else-if="actions.deleteBlockedByOrigin" class="tx-drawer__muted" data-testid="delete-origin-hint">
+                <i class="pi pi-info-circle" aria-hidden="true" />
+                {{
+                  actions.deleteBlockedByOrigin === 'installment'
+                    ? 'Parcelas não podem ser excluídas individualmente. Cancele a parcela ou cancele/exclua o plano de parcelamento.'
+                    : 'Ocorrências de recorrência não podem ser excluídas individualmente. Cancele a ocorrência ou desative a regra de recorrência.'
+                }}
+              </p>
+              <p
+                v-if="detail.installment && actions.canEdit"
+                class="tx-drawer__muted"
+                data-testid="installment-edit-hint"
+              >
+                <i class="pi pi-info-circle" aria-hidden="true" />
+                Ao editar uma parcela, o valor e a data da movimentação não podem ser alterados.
               </p>
 
               <div class="tx-drawer__actions">

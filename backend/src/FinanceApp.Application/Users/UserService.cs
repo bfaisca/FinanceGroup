@@ -93,13 +93,24 @@ public sealed partial class UserService(
     /// <summary>
     /// Marca para exclusão todos os dados individuais do usuário (persistidos junto com a anonimização).
     /// Pagamentos e histórico das movimentações e os saldos das contas saem por cascata no banco.
-    /// As Etapas 3/4 devem estender esta rotina com cartões, parcelamentos e recorrências; movimentações de grupo permanecem
+    /// A Etapa 3 estendeu esta rotina com cartões, parcelamentos e recorrências (D-029); a Etapa 4 deve tratar grupos: movimentações de grupo permanecem
     /// (autor exibido como "Usuário removido", conta/cartão desvinculados).
     /// </summary>
     private async Task RemoveIndividualFinancialDataAsync(Guid userId, CancellationToken cancellationToken)
     {
         var transactions = await db.Transactions.Where(t => t.CreatedByUserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
         db.Transactions.RemoveRange(transactions);
+
+        // Etapa 3 (D-029): parcelamentos, recorrências e cartões também são dados individuais. As movimentações geradas por eles
+        // já estão incluídas acima; tudo é removido na mesma transação (o EF ordena as exclusões pelas chaves estrangeiras).
+        var plans = await db.InstallmentPlans.Where(p => p.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        db.InstallmentPlans.RemoveRange(plans);
+
+        var rules = await db.RecurrenceRules.Where(r => r.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        db.RecurrenceRules.RemoveRange(rules);
+
+        var cards = await db.CreditCards.Where(c => c.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        db.CreditCards.RemoveRange(cards);
 
         var accounts = await db.Accounts.Where(a => a.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
         db.Accounts.RemoveRange(accounts);

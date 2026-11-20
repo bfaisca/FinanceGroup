@@ -88,6 +88,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Jwt:Audience"] = "GroupFinance.Web",
                 ["App:FrontendBaseUrl"] = FrontendBaseUrl,
                 ["RateLimiting:Enabled"] = "false",
+                ["Recurrence:BackgroundEnabled"] = "false",
                 ["Serilog:MinimumLevel:Default"] = "Warning",
             };
             foreach (var (key, value) in ExtraSettings)

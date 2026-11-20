@@ -56,7 +56,9 @@ public sealed class BalanceProjectionService(IAppDbContext db)
                 var referenceDate = reference.ReferenceDate;
                 var totals = await db.Transactions
                     .AsNoTracking()
-                    .Where(t => t.AccountId == accountId
+                    // Conta efetiva (D-025): movimentações da conta + compras de cartões associados a ela.
+                    // A data efetiva das compras no cartão é o vencimento da fatura (dueDate gravado).
+                    .Where(t => (t.AccountId == accountId || (t.CreditCardId != null && t.CreditCard!.AccountId == accountId))
                                 && t.Status != TransactionStatus.Canceled
                                 && (t.DueDate ?? t.TransactionDate) > referenceDate
                                 && (t.DueDate ?? t.TransactionDate) <= asOf)

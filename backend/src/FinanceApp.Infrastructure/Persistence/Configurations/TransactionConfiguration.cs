@@ -1,5 +1,8 @@
 using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Installments;
+using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +27,21 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
                 "AND (status <> 'Received' OR type = 'Income') " +
                 "AND (paid_at IS NULL OR status IN ('Paid','Received')) " +
                 "AND (paid_by_user_id IS NULL OR status IN ('Paid','Received'))");
+
+            // Etapa 3: cartão só em despesas, sem conta e sempre com forma de pagamento CreditCard (D-025).
+            t.HasCheckConstraint(
+                "ck_transactions_credit_card_rules",
+                "credit_card_id IS NULL OR (type = 'Expense' AND account_id IS NULL AND payment_method = 'CreditCard')");
+            // Parcela e ocorrência são mutuamente exclusivas e carregam seus campos de origem de forma coerente.
+            t.HasCheckConstraint(
+                "ck_transactions_origin_consistency",
+                "(installment_plan_id IS NULL) = (installment_number IS NULL) " +
+                "AND (recurrence_rule_id IS NULL) = (occurrence_date IS NULL) " +
+                "AND NOT (installment_plan_id IS NOT NULL AND recurrence_rule_id IS NOT NULL)");
+            // O teto exato é a contagem do plano (outra tabela; garantido pela aplicação): aqui vale o limite global do plano.
+            t.HasCheckConstraint(
+                "ck_transactions_installment_number_range",
+                "installment_number IS NULL OR installment_number BETWEEN 1 AND 120");
         });
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
@@ -35,6 +53,7 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
         builder.Property(t => t.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(t => t.TransactionDate).IsRequired();
         builder.Property(t => t.Notes).HasMaxLength(Transaction.NotesMaxLength);
+        builder.Property(t => t.IsManuallyEdited).IsRequired();
         builder.Property(t => t.CreatedAt).IsRequired();
         builder.Property(t => t.UpdatedAt).IsRequired();
 
@@ -55,6 +74,19 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
             .HasForeignKey(t => t.CategoryId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(t => t.CreditCard)
+            .WithMany()
+            .HasForeignKey(t => t.CreditCardId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(t => t.InstallmentPlan)
+            .WithMany()
+            .HasForeignKey(t => t.InstallmentPlanId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<RecurrenceRule>()
+            .WithMany()
+            .HasForeignKey(t => t.RecurrenceRuleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasMany(t => t.Payments)
             .WithOne()
             .HasForeignKey(p => p.TransactionId)
@@ -71,6 +103,17 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
         builder.HasIndex(t => new { t.CreatedByUserId, t.TransactionDate });
         builder.HasIndex(t => t.AccountId);
         builder.HasIndex(t => t.CategoryId);
+        builder.HasIndex(t => new { t.CreditCardId, t.DueDate })
+            .HasFilter("credit_card_id IS NOT NULL")
+            .HasDatabaseName("ix_transactions_credit_card_id_due_date");
+
+        // Idempotência (D-010/D-026/D-027): NULLs nunca colidem, então movimentações comuns não são afetadas.
+        builder.HasIndex(t => new { t.InstallmentPlanId, t.InstallmentNumber })
+            .IsUnique()
+            .HasDatabaseName("ux_transactions_installment_plan_id_number");
+        builder.HasIndex(t => new { t.RecurrenceRuleId, t.OccurrenceDate })
+            .IsUnique()
+            .HasDatabaseName("ux_transactions_recurrence_rule_id_occurrence_date");
         builder.HasIndex(t => new { t.CreatedByUserId, t.DueDate })
             .HasFilter("status IN ('Planned','Pending')")
             .HasDatabaseName("ix_transactions_created_by_user_id_due_date_open");

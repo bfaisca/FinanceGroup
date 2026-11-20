@@ -30,6 +30,10 @@ export interface TransactionFilters {
   type?: TransactionType
   categoryId?: Uuid
   accountId?: Uuid
+  /** Etapa 3 (§10). */
+  creditCardId?: Uuid
+  installmentPlanId?: Uuid
+  recurrenceRuleId?: Uuid
   status?: TransactionStatus
   search?: string
   page: number
@@ -87,6 +91,12 @@ export function parseTransactionFilters(query: LocationQuery): TransactionFilter
   if (categoryId) filters.categoryId = categoryId
   const accountId = single(query.accountId)
   if (accountId) filters.accountId = accountId
+  const creditCardId = single(query.creditCardId)
+  if (creditCardId) filters.creditCardId = creditCardId
+  const installmentPlanId = single(query.installmentPlanId)
+  if (installmentPlanId) filters.installmentPlanId = installmentPlanId
+  const recurrenceRuleId = single(query.recurrenceRuleId)
+  if (recurrenceRuleId) filters.recurrenceRuleId = recurrenceRuleId
   const search = single(query.search)
   if (search) filters.search = search
 
@@ -107,6 +117,9 @@ export function toRouteQuery(filters: TransactionFilters): Record<string, string
   if (filters.status) query.status = filters.status
   if (filters.categoryId) query.categoryId = filters.categoryId
   if (filters.accountId) query.accountId = filters.accountId
+  if (filters.creditCardId) query.creditCardId = filters.creditCardId
+  if (filters.installmentPlanId) query.installmentPlanId = filters.installmentPlanId
+  if (filters.recurrenceRuleId) query.recurrenceRuleId = filters.recurrenceRuleId
   if (filters.search?.trim()) query.search = filters.search.trim()
   if (filters.page > 1) query.page = String(filters.page)
   if (filters.pageSize !== DEFAULT_PAGE_SIZE) query.pageSize = String(filters.pageSize)
@@ -133,6 +146,9 @@ export function toListQuery(filters: TransactionFilters): TransactionListQuery {
   if (filters.status) query.status = filters.status
   if (filters.categoryId) query.categoryId = filters.categoryId
   if (filters.accountId) query.accountId = filters.accountId
+  if (filters.creditCardId) query.creditCardId = filters.creditCardId
+  if (filters.installmentPlanId) query.installmentPlanId = filters.installmentPlanId
+  if (filters.recurrenceRuleId) query.recurrenceRuleId = filters.recurrenceRuleId
   if (filters.search?.trim()) query.search = filters.search.trim()
   return query
 }
@@ -146,6 +162,9 @@ export function countActiveFilters(filters: TransactionFilters): number {
     filters.status,
     filters.categoryId,
     filters.accountId,
+    filters.creditCardId,
+    filters.installmentPlanId,
+    filters.recurrenceRuleId,
     filters.search?.trim(),
   ].filter(Boolean).length
 }

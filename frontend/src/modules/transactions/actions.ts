@@ -8,6 +8,8 @@ export interface TransactionActions {
   canDelete: boolean
   /** Há pagamentos: excluir não é possível, só cancelar (D-020). */
   deleteBlockedByPayments: boolean
+  /** Parcelas e ocorrências nunca são excluídas individualmente (§10): só canceladas. */
+  deleteBlockedByOrigin: 'installment' | 'recurrence' | null
   canRemovePayments: boolean
 }
 
@@ -16,17 +18,20 @@ export interface TransactionActions {
  * e o `422 business_rule_violation` sempre é tratado na tela.
  */
 export function availableActions(
-  tx: Pick<TransactionDto, 'status' | 'paidAmount' | 'remainingAmount'>,
+  tx: Pick<TransactionDto, 'status' | 'paidAmount' | 'remainingAmount'> &
+    Partial<Pick<TransactionDto, 'installment' | 'recurrenceRuleId'>>,
 ): TransactionActions {
   const canceled = tx.status === 'Canceled'
   const hasPayments = tx.paidAmount > 0
+  const origin = tx.installment ? 'installment' : tx.recurrenceRuleId ? 'recurrence' : null
   return {
     canEdit: !canceled,
     canPay: !canceled && tx.remainingAmount > 0,
     canCancel: !canceled,
     canReopen: canceled,
-    canDelete: !hasPayments,
-    deleteBlockedByPayments: hasPayments,
+    canDelete: !hasPayments && origin === null,
+    deleteBlockedByPayments: hasPayments && origin === null,
+    deleteBlockedByOrigin: origin,
     canRemovePayments: !canceled,
   }
 }

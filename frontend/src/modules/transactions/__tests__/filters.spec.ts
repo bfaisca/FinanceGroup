@@ -93,3 +93,26 @@ describe('filtros ↔ query string', () => {
     expect(countActiveFilters(defaultFilters({ type: 'Income', search: 'a', from: '2026-11-01' }))).toBe(3)
   })
 })
+
+describe('filtros da Etapa 3 (cartão, plano, regra)', () => {
+  const query = { creditCardId: 'cc1', installmentPlanId: 'p1', recurrenceRuleId: 'r1' }
+
+  it('lê da URL, envia ao backend e devolve à URL', () => {
+    const filters = parseTransactionFilters(query)
+    expect(filters).toMatchObject(query)
+    expect(toListQuery(filters)).toMatchObject(query)
+    expect(toRouteQuery(filters)).toEqual(query)
+    expect(countActiveFilters(filters)).toBe(3)
+  })
+
+  it('combina com os demais filtros e preserva `open`/`new`', () => {
+    const filters = parseTransactionFilters({ creditCardId: 'cc1', status: 'Overdue' })
+    expect(mergeRouteQuery({ open: 't1' }, filters)).toEqual({ open: 't1', creditCardId: 'cc1', status: 'Overdue' })
+  })
+
+  it('ignora valores vazios', () => {
+    const filters = parseTransactionFilters({ creditCardId: '  ' })
+    expect(filters.creditCardId).toBeUndefined()
+    expect(toRouteQuery(filters)).toEqual({})
+  })
+})

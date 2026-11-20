@@ -17,6 +17,8 @@ function values(partial: Partial<TransactionFormValues> = {}): TransactionFormVa
     categoryId: 'c1',
     accountId: null,
     paymentMethod: null,
+    payWith: 'account',
+    creditCardId: null,
     status: 'Pending',
     transactionDate: '2026-11-18',
     dueDate: null,
@@ -110,5 +112,37 @@ describe('pagamento', () => {
       accountId: 'a1',
       paymentMethod: 'Pix',
     })
+  })
+})
+
+describe('formulário com cartão (Etapa 3)', () => {
+  it('exige cartão e ignora o vencimento digitado', () => {
+    const noCard = validateTransactionForm(values({ payWith: 'card' }))
+    expect(noCard.creditCardId).toBeDefined()
+
+    const ok = validateTransactionForm(values({ payWith: 'card', creditCardId: 'cc1', dueDate: '2000-01-01' }))
+    expect(ok).toEqual({})
+  })
+
+  it('o request com cartão traz creditCardId e método CreditCard, sem accountId e dueDate', () => {
+    const request = buildCreateRequest(
+      values({ payWith: 'card', creditCardId: 'cc1', accountId: 'a1', dueDate: '2026-12-01', paymentMethod: 'Pix' }),
+    )
+    expect(request.creditCardId).toBe('cc1')
+    expect(request.paymentMethod).toBe('CreditCard')
+    expect('accountId' in request).toBe(false)
+    expect('dueDate' in request).toBe(false)
+  })
+
+  it('receita nunca usa cartão, mesmo com payWith residual', () => {
+    const request = buildCreateRequest(values({ type: 'Income', payWith: 'card', creditCardId: 'cc1' }))
+    expect('creditCardId' in request).toBe(false)
+    expect(validateTransactionForm(values({ type: 'Income', payWith: 'card' })).creditCardId).toBeUndefined()
+  })
+
+  it('a edição envia o mesmo cartão (imutável) e nunca o `type`', () => {
+    const request = buildUpdateRequest(values({ payWith: 'card', creditCardId: 'cc1' }))
+    expect(request.creditCardId).toBe('cc1')
+    expect('type' in request).toBe(false)
   })
 })

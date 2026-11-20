@@ -127,7 +127,7 @@ public sealed class DashboardApiTests : IDisposable
         var json = await user.GetJson("/api/v1/dashboard?from=2026-05-01&to=2026-06-30");
 
         Assert.Equal(
-            ["balance", "expensesByCategory", "monthlyHistory", "period", "today", "totals", "upcomingDues"],
+            ["balance", "creditCards", "expensesByCategory", "monthlyHistory", "period", "today", "totals", "upcomingDues"],
             json.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal));
         Assert.Equal(
             ["accountsWithBalance", "accountsWithoutBalance", "projectedAsOf", "projectedTotal", "reportedTotal"],

@@ -2,6 +2,9 @@ using FinanceApp.Domain.Transactions;
 
 namespace FinanceApp.Application.Transactions;
 
+/// <summary>Referência da parcela dentro do parcelamento (contrato §10).</summary>
+public sealed record InstallmentRefDto(Guid PlanId, int Number, int Count);
+
 /// <summary>Movimentação (listagem). <c>Status</c> é o estado APRESENTADO (inclui <c>Overdue</c>).</summary>
 public sealed record TransactionDto(
     Guid Id,
@@ -24,7 +27,11 @@ public sealed record TransactionDto(
     DateOnly? PaidAt,
     string? Notes,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid? CreditCardId,
+    string? CreditCardName,
+    InstallmentRefDto? Installment,
+    Guid? RecurrenceRuleId);
 
 public sealed record TransactionPaymentDto(
     Guid Id,
@@ -58,13 +65,18 @@ public sealed record TransactionDetailDto(
     string? Notes,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
+    Guid? CreditCardId,
+    string? CreditCardName,
+    InstallmentRefDto? Installment,
+    Guid? RecurrenceRuleId,
     IReadOnlyList<TransactionPaymentDto> Payments)
 {
     public static TransactionDetailDto From(TransactionDto t, IReadOnlyList<TransactionPaymentDto> payments) =>
         new(
             t.Id, t.Description, t.Type, t.Amount, t.PaidAmount, t.RemainingAmount, t.Status, t.CategoryId, t.CategoryName,
             t.ParentCategoryName, t.CategoryColor, t.CategoryIcon, t.AccountId, t.AccountName, t.PaymentMethod,
-            t.TransactionDate, t.DueDate, t.PaidAt, t.Notes, t.CreatedAt, t.UpdatedAt, payments);
+            t.TransactionDate, t.DueDate, t.PaidAt, t.Notes, t.CreatedAt, t.UpdatedAt, t.CreditCardId, t.CreditCardName, t.Installment,
+            t.RecurrenceRuleId, payments);
 }
 
 public sealed record TransactionHistoryEntryDto(
@@ -86,6 +98,9 @@ public sealed class CreateTransactionRequest
     public Guid CategoryId { get; init; }
 
     public Guid? AccountId { get; init; }
+
+    /// <summary>Compra no cartão (somente despesas). Com cartão, <c>accountId</c> e <c>dueDate</c> não podem ser enviados (D-025).</summary>
+    public Guid? CreditCardId { get; init; }
 
     public PaymentMethod? PaymentMethod { get; init; }
 
@@ -109,6 +124,9 @@ public sealed class UpdateTransactionRequest
     public Guid CategoryId { get; init; }
 
     public Guid? AccountId { get; init; }
+
+    /// <summary>Imutável: omitido/nulo mantém o cartão atual; um valor diferente do atual → 422 (D-025).</summary>
+    public Guid? CreditCardId { get; init; }
 
     public PaymentMethod? PaymentMethod { get; init; }
 
@@ -159,7 +177,14 @@ public sealed class TransactionListQuery
 
     public Guid? CategoryId { get; init; }
 
+    /// <summary>Inclui também compras de cartões associados à conta (conta efetiva, D-025).</summary>
     public Guid? AccountId { get; init; }
+
+    public Guid? CreditCardId { get; init; }
+
+    public Guid? InstallmentPlanId { get; init; }
+
+    public Guid? RecurrenceRuleId { get; init; }
 
     public TransactionStatus? Status { get; init; }
 

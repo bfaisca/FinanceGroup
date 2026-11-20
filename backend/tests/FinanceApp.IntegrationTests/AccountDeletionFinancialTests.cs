@@ -3,6 +3,7 @@ using FinanceApp.Domain.Categories;
 using FinanceApp.IntegrationTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using static FinanceApp.IntegrationTests.Infrastructure.ApiTestHelpers;
+using static FinanceApp.IntegrationTests.Infrastructure.Etapa3Support;
 
 namespace FinanceApp.IntegrationTests;
 
@@ -89,5 +90,49 @@ public class AccountDeletionFinancialTests(ApiFactory factory)
         var user = await h.NewUserAsync();
         var response = await user.SendAsync(HttpMethod.Delete, "/api/v1/users/me", new { password = DefaultPassword });
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    private async Task SeedCardsPlansRulesAsync(ApiUser user)
+    {
+        var account = await h.CreateAccountAsync(user, "Corrente");
+        var category = await h.CategoryIdAsync(user, "Compras");
+        var subscriptions = await h.CategoryIdAsync(user, "Assinaturas");
+        var card = await h.CreateCardAsync(user, "Visa", accountId: account.Id);
+        await h.CreateCardPurchaseAsync(user, card.Id, "Compra no cartão", 100m, category, h.Today);
+        var plan = await h.CreatePlanAsync(user, "Sofá", 300m, 3, h.Today, category, cardId: card.Id);
+        await h.PayAsync(user, plan.Installments[0].Id, 50m, h.Today);
+        await h.CreateRuleAsync(user, "Streaming", "Expense", 30m, subscriptions, "Monthly", h.Today.AddDays(5), end: h.Today.AddMonths(3));
+    }
+
+    private Task<(int Cards, int Plans, int Rules, int Transactions)> CountEtapa3Async(Guid userId) =>
+        h.WithDbAsync(async db => (
+            await db.CreditCards.CountAsync(c => c.UserId == userId),
+            await db.InstallmentPlans.CountAsync(p => p.UserId == userId),
+            await db.RecurrenceRules.CountAsync(r => r.UserId == userId),
+            await db.Transactions.CountAsync(t => t.CreatedByUserId == userId)));
+
+    [Fact]
+    public async Task DeleteAccount_AlsoRemovesCardsPlansRulesAndTheirTransactions_AndKeepsOtherUsersData()
+    {
+        var doomed = await h.NewUserAsync();
+        var bystander = await h.NewUserAsync();
+        await SeedCardsPlansRulesAsync(doomed);
+        await SeedCardsPlansRulesAsync(bystander);
+        var before = await CountEtapa3Async(doomed.Id);
+        Assert.Equal(1, before.Cards);
+        Assert.Equal(1, before.Plans);
+        Assert.Equal(1, before.Rules);
+        Assert.True(before.Transactions >= 1 + 3 + 3);
+        var bystanderBefore = await CountEtapa3Async(bystander.Id);
+        Assert.Equal(before, bystanderBefore);
+
+        var response = await doomed.SendAsync(HttpMethod.Delete, "/api/v1/users/me", new { password = DefaultPassword });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal((0, 0, 0, 0), await CountEtapa3Async(doomed.Id));
+        Assert.Equal(0, await h.WithDbAsync(db => db.TransactionPayments.CountAsync(p => p.CreatedByUserId == doomed.Id)));
+        Assert.Equal(bystanderBefore, await CountEtapa3Async(bystander.Id));
+        Assert.Equal(1, (await bystander.GetOk<List<FinanceApp.Application.CreditCards.CreditCardDto>>("/api/v1/credit-cards")).Count);
+        Assert.Equal(1, (await bystander.GetOk<FinanceApp.Application.Common.PagedResult<FinanceApp.Application.Installments.InstallmentPlanDto>>("/api/v1/installment-plans")).TotalCount);
     }
 }

@@ -159,3 +159,63 @@ a {
 .money--expense {
   color: var(--gf-danger);
 }
+
+/* Tabelas simples (alternativas acessíveis de gráficos, relatórios). */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.simple-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.simple-table th,
+.simple-table td {
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--gf-border);
+  text-align: left;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+.simple-table thead th {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--gf-text-muted);
+}
+
+.simple-table tbody th {
+  font-weight: 500;
+}
+
+.simple-table .num {
+  text-align: right;
+}
+
+.simple-table tfoot th,
+.simple-table tfoot td {
+  font-weight: 600;
+}
+
+/* Relatórios. */
+.report-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.report-title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.report-note {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--gf-text-muted);
+}

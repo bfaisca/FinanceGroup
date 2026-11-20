@@ -9,9 +9,9 @@ import Textarea from 'primevue/textarea'
 import DateInput from '@/components/DateInput.vue'
 import FormField from '@/components/FormField.vue'
 import MoneyInput from '@/components/MoneyInput.vue'
+import PaymentSourceFields from '@/components/PaymentSourceFields.vue'
 import { useFormErrors } from '@/composables/useFormErrors'
 import { buildCategoryOptions } from '@/modules/categories/tree'
-import { useAccountsStore } from '@/stores/accounts'
 import { useCategoriesStore } from '@/stores/categories'
 import type {
   CreateTransactionRequest,
@@ -21,12 +21,13 @@ import type {
   UpdateTransactionRequest,
 } from '@/types/api'
 import { formatMoneyInput, toCents } from '@/utils/money'
-import { enumOptions, PAYMENT_METHOD_LABELS, STATUS_PRESENTATION, TRANSACTION_TYPE_LABELS } from '@/utils/labels'
+import { enumOptions, STATUS_PRESENTATION, TRANSACTION_TYPE_LABELS } from '@/utils/labels'
 import {
   buildCreateRequest,
   buildUpdateRequest,
   NOTES_MAX,
   TRANSACTION_FORM_FIELDS,
+  usesCard,
   validateTransactionForm,
   type TransactionFormValues,
 } from '../validation'
@@ -59,7 +60,6 @@ const emit = defineEmits<{
 }>()
 
 const categories = useCategoriesStore()
-const accounts = useAccountsStore()
 const { errors, clear, setLocal, setServer } = useFormErrors(TRANSACTION_FORM_FIELDS)
 
 const isEdit = computed(() => props.transaction !== null)
@@ -74,6 +74,8 @@ function initialValues(): TransactionFormValues {
       categoryId: tx.categoryId,
       accountId: tx.accountId,
       paymentMethod: tx.paymentMethod,
+      payWith: tx.creditCardId ? 'card' : 'account',
+      creditCardId: tx.creditCardId,
       status: null,
       transactionDate: tx.transactionDate,
       dueDate: tx.dueDate,
@@ -87,6 +89,8 @@ function initialValues(): TransactionFormValues {
     categoryId: null,
     accountId: props.defaultAccountId,
     paymentMethod: null,
+    payWith: 'account',
+    creditCardId: null,
     status: 'Pending',
     transactionDate: props.today,
     dueDate: null,
@@ -103,16 +107,13 @@ watch(
 )
 
 const typeOptions = enumOptions(TRANSACTION_TYPE_LABELS)
-const paymentMethodOptions = enumOptions(PAYMENT_METHOD_LABELS)
+
+/** Parcela: valor e data da movimentação são imutáveis (§10, D-026). */
+const isInstallment = computed(() => props.transaction?.installment != null)
+const withCard = computed(() => usesCard(form))
 
 const categoryOptions = computed(() =>
   buildCategoryOptions(categories.items, form.type, { alwaysInclude: props.transaction?.categoryId }),
-)
-
-const accountOptions = computed(() =>
-  accounts.items
-    .filter((a) => a.isActive || a.id === props.transaction?.accountId)
-    .map((a) => ({ value: a.id, label: a.isActive ? a.name : `${a.name} (inativa)` })),
 )
 
 /** Situação inicial só é editável sem pagamentos e fora de estados finais. */
@@ -138,6 +139,12 @@ function onTypeChange(value: TransactionType | null): void {
   // A categoria precisa ser do mesmo tipo da movimentação.
   form.categoryId = null
   clear('categoryId')
+  if (value === 'Income') {
+    // Cartão só vale para despesas (§10).
+    form.payWith = 'account'
+    form.creditCardId = null
+    if (form.paymentMethod === 'CreditCard') form.paymentMethod = null
+  }
 }
 
 function onSubmit(): void {
@@ -214,6 +221,7 @@ function onSubmit(): void {
           v-model="form.amount"
           :described-by="describedBy"
           :invalid="invalid"
+          :disabled="isInstallment"
           @update:model-value="clear('amount')"
         />
       </FormField>
@@ -253,6 +261,7 @@ function onSubmit(): void {
         v-slot="{ id, describedBy, invalid }"
         label="Data da movimentação"
         :error="errors.transactionDate"
+        :hint="isInstallment ? 'A data de uma parcela não pode ser alterada.' : undefined"
         required
       >
         <DateInput
@@ -260,10 +269,12 @@ function onSubmit(): void {
           v-model="form.transactionDate"
           :described-by="describedBy"
           :invalid="invalid"
+          :disabled="isInstallment"
           @update:model-value="clear('transactionDate')"
         />
       </FormField>
       <FormField
+        v-if="!withCard"
         id="tx-due"
         v-slot="{ id, describedBy, invalid }"
         label="Vencimento"
@@ -281,50 +292,27 @@ function onSubmit(): void {
       </FormField>
     </div>
 
-    <div class="form-grid">
-      <FormField
-        id="tx-account"
-        v-slot="{ id, describedBy, invalid }"
-        label="Conta"
-        :error="errors.accountId"
-        hint="Opcional."
-      >
-        <Select
-          v-model="form.accountId"
-          :input-id="id"
-          :options="accountOptions"
-          option-label="label"
-          option-value="value"
-          placeholder="Sem conta"
-          show-clear
-          :invalid="invalid"
-          :aria-describedby="describedBy"
-          fluid
-          @update:model-value="clear('accountId')"
-        />
-      </FormField>
-      <FormField
-        id="tx-method"
-        v-slot="{ id, describedBy, invalid }"
-        label="Método de pagamento"
-        :error="errors.paymentMethod"
-        hint="Opcional."
-      >
-        <Select
-          v-model="form.paymentMethod"
-          :input-id="id"
-          :options="paymentMethodOptions"
-          option-label="label"
-          option-value="value"
-          placeholder="Não informado"
-          show-clear
-          :invalid="invalid"
-          :aria-describedby="describedBy"
-          fluid
-          @update:model-value="clear('paymentMethod')"
-        />
-      </FormField>
-    </div>
+    <p v-if="isInstallment" class="tx-form__note" data-testid="installment-note">
+      <i class="pi pi-info-circle" aria-hidden="true" />
+      Esta é a parcela {{ transaction?.installment?.number }}/{{ transaction?.installment?.count }}. O valor e a data
+      não podem ser alterados; cancele a parcela ou o plano se necessário.
+    </p>
+
+    <PaymentSourceFields
+      v-model:pay-with="form.payWith"
+      v-model:credit-card-id="form.creditCardId"
+      v-model:account-id="form.accountId"
+      v-model:payment-method="form.paymentMethod"
+      id-prefix="tx"
+      :allow-card="form.type === 'Expense'"
+      :locked="isEdit"
+      :current-account-id="transaction?.accountId ?? null"
+      :current-card-id="transaction?.creditCardId ?? null"
+      :errors="errors"
+      @update:credit-card-id="clear('creditCardId')"
+      @update:account-id="clear('accountId')"
+      @update:payment-method="clear('paymentMethod')"
+    />
 
     <FormField
       v-if="canEditStatus"
@@ -399,6 +387,15 @@ function onSubmit(): void {
 
 .tx-form__required {
   color: var(--gf-danger);
+}
+
+.tx-form__note {
+  margin: 0;
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  color: var(--gf-text-muted);
+  font-size: 0.875rem;
 }
 
 .tx-form__option--child {

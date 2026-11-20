@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 import Select from 'primevue/select'
 import { useCategoriesStore } from '@/stores/categories'
-import { makeCategory } from '@/test/fixtures'
+import { makeCategory, makeCreditCard } from '@/test/fixtures'
+import { useCreditCardsStore } from '@/stores/creditCards'
 import { mountWithPlugins } from '@/test/mount'
 import TransactionFiltersBar from '../components/TransactionFiltersBar.vue'
 import { defaultFilters, type TransactionFilters } from '../filters'
@@ -106,6 +107,17 @@ describe('TransactionFiltersBar', () => {
   it('oculta o filtro de conta quando a tela já está restrita a uma conta', () => {
     const wrapper = setup(defaultFilters(), { hideAccount: true })
     expect(wrapper.find('#filter-account').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('mostra texto legível (e não um campo em branco) quando nenhum filtro está aplicado', () => {
+    const pinia = createPinia()
+    useCreditCardsStore(pinia).items = [makeCreditCard()]
+    const { wrapper } = mountWithPlugins(TransactionFiltersBar, { props: { modelValue: defaultFilters() }, pinia })
+    const text = wrapper.text()
+    expect(text).toContain('Todos os tipos')
+    expect(text).toContain('Todas as situações')
+    expect(text).toContain('Todas as contas')
+    expect(text).toContain('Todos os cartões')
     wrapper.unmount()
   })
 })

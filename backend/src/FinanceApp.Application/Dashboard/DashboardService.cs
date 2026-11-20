@@ -2,6 +2,8 @@ using System.Globalization;
 using FinanceApp.Application.Accounts;
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Validation;
+using FinanceApp.Application.CreditCards;
+using FinanceApp.Application.Reports;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Domain.Transactions;
 using FluentValidation;
@@ -18,6 +20,7 @@ public sealed class DashboardService(
     ICurrentUser currentUser,
     IDateTimeProvider clock,
     BalanceProjectionService projection,
+    CreditCardSummaryService cardSummaries,
     IValidator<DashboardQuery> validator)
 {
     public const int UpcomingDuesLimit = 10;
@@ -37,8 +40,26 @@ public sealed class DashboardService(
         var byCategory = await GetExpensesByCategoryAsync(userId, from, to, totals.Expense, cancellationToken).ConfigureAwait(false);
         var upcoming = await GetUpcomingDuesAsync(userId, today, cancellationToken).ConfigureAwait(false);
         var history = await GetMonthlyHistoryAsync(userId, to, cancellationToken).ConfigureAwait(false);
+        var cards = await GetCreditCardsAsync(userId, today, cancellationToken).ConfigureAwait(false);
 
-        return new DashboardDto(new DashboardPeriodDto(from, to), balance, totals, byCategory, upcoming, history, today);
+        return new DashboardDto(new DashboardPeriodDto(from, to), balance, totals, byCategory, upcoming, history, today, cards);
+    }
+
+    /// <summary>Cartões ATIVOS, por nome, com limite utilizado/disponível e fatura aberta (contrato §15).</summary>
+    private async Task<IReadOnlyList<DashboardCreditCardDto>> GetCreditCardsAsync(Guid userId, DateOnly today, CancellationToken cancellationToken)
+    {
+        var cards = await db.CreditCards
+            .AsNoTracking()
+            .Where(c => c.UserId == userId && c.IsActive)
+            .OrderBy(c => c.Name)
+            .ThenBy(c => c.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var summaries = await cardSummaries.GetAsync(cards, today, cancellationToken).ConfigureAwait(false);
+        return cards
+            .Select(c => new DashboardCreditCardDto(
+                c.Id, c.Name, c.CreditLimit, summaries[c.Id].UsedLimit, summaries[c.Id].AvailableLimit, summaries[c.Id].OpenInvoice))
+            .ToList();
     }
 
     private IQueryable<Transaction> ActiveTransactions(Guid userId) =>
@@ -66,26 +87,18 @@ public sealed class DashboardService(
 
     private async Task<DashboardTotalsDto> GetTotalsAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken cancellationToken)
     {
-        var rows = await ActiveTransactions(userId)
-            .Where(t => t.TransactionDate >= from && t.TransactionDate <= to)
-            .GroupBy(t => t.Type)
-            .Select(g => new { Type = g.Key, Amount = g.Sum(t => t.Amount), Paid = g.Sum(t => t.PaidAmount) })
-            .ToListAsync(cancellationToken)
+        var totals = await TransactionAggregates
+            .GetTotalsAsync(ActiveTransactions(userId).Where(t => t.TransactionDate >= from && t.TransactionDate <= to), cancellationToken)
             .ConfigureAwait(false);
 
-        var income = rows.FirstOrDefault(r => r.Type == TransactionType.Income);
-        var expense = rows.FirstOrDefault(r => r.Type == TransactionType.Expense);
-        var incomeTotal = income?.Amount ?? 0m;
-        var expenseTotal = expense?.Amount ?? 0m;
-
         return new DashboardTotalsDto(
-            incomeTotal,
-            expenseTotal,
-            incomeTotal - expenseTotal,
-            income?.Paid ?? 0m,
-            incomeTotal - (income?.Paid ?? 0m),
-            expense?.Paid ?? 0m,
-            expenseTotal - (expense?.Paid ?? 0m));
+            totals.Income,
+            totals.Expense,
+            totals.Result,
+            totals.ReceivedIncome,
+            totals.PendingIncome,
+            totals.PaidExpense,
+            totals.PendingExpense);
     }
 
     /// <summary>Despesas agrupadas pela categoria RAIZ (subcategorias somadas ao pai), em ordem decrescente.</summary>
@@ -121,7 +134,7 @@ public sealed class DashboardService(
                 categories[g.RootId].Name,
                 categories[g.RootId].Color,
                 g.Total,
-                totalExpense == 0 ? 0m : Math.Round(g.Total / totalExpense * 100m, 2, MidpointRounding.AwayFromZero)))
+                ReportMath.Percentage(g.Total, totalExpense)))
             .OrderByDescending(c => c.Total)
             .ThenBy(c => c.CategoryName, StringComparer.CurrentCulture)
             .ToList();

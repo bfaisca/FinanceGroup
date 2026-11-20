@@ -23,7 +23,13 @@ internal sealed record TransactionRow(
     DateOnly? PaidAt,
     string? Notes,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid? CreditCardId,
+    string? CreditCardName,
+    Guid? InstallmentPlanId,
+    int? InstallmentNumber,
+    int? InstallmentCount,
+    Guid? RecurrenceRuleId);
 
 internal static class TransactionProjections
 {
@@ -48,7 +54,13 @@ internal static class TransactionProjections
             t.PaidAt,
             t.Notes,
             t.CreatedAt,
-            t.UpdatedAt));
+            t.UpdatedAt,
+            t.CreditCardId,
+            t.CreditCard == null ? null : t.CreditCard.Name,
+            t.InstallmentPlanId,
+            t.InstallmentNumber,
+            t.InstallmentPlan == null ? null : t.InstallmentPlan.InstallmentCount,
+            t.RecurrenceRuleId));
 
     public static TransactionDto ToDto(this TransactionRow row, DateOnly today)
     {
@@ -74,6 +86,12 @@ internal static class TransactionProjections
             row.PaidAt,
             row.Notes,
             row.CreatedAt,
-            row.UpdatedAt);
+            row.UpdatedAt,
+            row.CreditCardId,
+            row.CreditCardName,
+            row.InstallmentPlanId is { } planId && row.InstallmentNumber is { } number && row.InstallmentCount is { } count
+                ? new InstallmentRefDto(planId, number, count)
+                : null,
+            row.RecurrenceRuleId);
     }
 }

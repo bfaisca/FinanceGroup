@@ -1,7 +1,9 @@
 import type {
   AccountType,
   CategoryType,
+  InstallmentPlanStatus,
   PaymentMethod,
+  RecurrenceFrequency,
   TransactionHistoryAction,
   TransactionStatus,
   TransactionType,
@@ -73,3 +75,31 @@ export function paymentActionLabel(type: TransactionType): string {
 export function enumOptions<T extends string>(labels: Record<T, string>): { value: T; label: string }[] {
   return (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }))
 }
+
+/** Rótulo do método de pagamento; `null` (ex.: relatórios) = "Não informado". */
+export function paymentMethodLabel(method: PaymentMethod | null | undefined): string {
+  return method ? PAYMENT_METHOD_LABELS[method] : 'Não informado'
+}
+
+export const INSTALLMENT_STATUS_PRESENTATION: Record<InstallmentPlanStatus, StatusPresentation> = {
+  Open: { label: 'Em aberto', icon: 'pi pi-clock', tone: 'warning' },
+  Completed: { label: 'Concluído', icon: 'pi pi-check-circle', tone: 'success' },
+  Canceled: { label: 'Cancelado', icon: 'pi pi-ban', tone: 'neutral' },
+}
+
+export const INSTALLMENT_STATUSES = Object.keys(INSTALLMENT_STATUS_PRESENTATION) as InstallmentPlanStatus[]
+
+/** Opções do seletor de frequência (a regra de passo é do backend — D-027). */
+export const FREQUENCY_OPTION_LABELS: Record<RecurrenceFrequency, string> = {
+  Daily: 'Diária',
+  Weekly: 'Semanal',
+  Biweekly: 'Quinzenal',
+  Monthly: 'Mensal',
+  Bimonthly: 'Bimestral',
+  Quarterly: 'Trimestral',
+  Semiannual: 'Semestral',
+  Annual: 'Anual',
+  Custom: 'Personalizada (a cada N dias)',
+}
+
+export const RECURRENCE_FREQUENCIES = Object.keys(FREQUENCY_OPTION_LABELS) as RecurrenceFrequency[]
