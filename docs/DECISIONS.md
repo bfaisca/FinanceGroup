@@ -103,3 +103,38 @@ Categorias padrão (`userId = null`, `isDefault = true`) são criadas por migrat
 - O histórico (`transaction_audit_entries`) grava, para `category` e `account`, o **nome** vigente na época (não o id), e pagamentos no formato `"200.00 (2026-11-18)"` (campo `payment`). O frontend interpreta esse formato.
 - Ids de categoria, conta ou categoria-pai inexistentes/de outro usuário **no corpo** → `400 validation_error` (não vaza existência); `404` fica para ids na rota.
 - Projeção (D-019): movimentações na **mesma data** do snapshot não entram (o saldo informado vale para o fim do dia).
+
+## D-025 — Compras no cartão (detalha D-003) — Aceita
+- `Transaction` ganha `creditCardId` (opcional, **imutável** após criar). Só **despesas** podem ter cartão.
+- Compra no cartão: `accountId` **não é aceito** (a conta é a associada ao cartão, `credit_cards.account_id`); `dueDate` **não é aceito** (é calculado pelo backend); `paymentMethod` é `CreditCard` (enviar outro valor → 400).
+- **Vencimento da fatura** (calculado no backend a partir de `transactionDate`, `closingDay`, `dueDay` do cartão): se o dia da compra ≤ `closingDay` do mês (ajustado ao último dia do mês quando o dia não existe), a fatura fecha nesse mês; senão, no mês seguinte. O vencimento é o `dueDay` do mês de fechamento, ou do mês seguinte se `dueDay <= closingDay`; dia inexistente → último dia do mês. O `dueDate` é **gravado** na compra; mudar fechamento/vencimento do cartão depois **não** recalcula compras já feitas.
+- **Saldo projetado (estende D-019):** entram, para a conta X, as movimentações com `accountId = X` **e** as compras no cartão cujo cartão tenha `accountId = X`. Data efetiva = `dueDate` (vencimento da fatura). Cartão sem conta associada não impacta nenhuma conta.
+- Relatórios "por conta": conta efetiva = `accountId` da movimentação, ou a conta do cartão; sem nenhuma → "Sem conta".
+- Pagar a fatura **não** gera despesa. O pagamento de uma compra é registrado como pagamento da própria compra (sem gestão de faturas no MVP).
+- **Limite utilizado** = soma de `amount − paidAmount` de **todas** as compras/parcelas **não canceladas** do cartão (inclui parcelas futuras). `limite disponível = limite − utilizado` (pode ser negativo → apresentado como excedido).
+- **Fatura aberta** (resumo): a fatura que recebe compras feitas **hoje**: `dueDate` calculado para "hoje"; valor = soma do restante das compras não canceladas com esse `dueDate`.
+- Cartão inativo não aceita novas compras/parcelamentos/recorrências (422); histórico permanece.
+
+## D-026 — Parcelamentos — Aceita
+- `InstallmentPlan` (`firstDate` generaliza o `FirstDueDate` do CLAUDE.md: para cartão é a data da compra; sem cartão também é o vencimento da 1ª parcela).
+- Parcela *i* (1..N): `transactionDate = firstDate + (i−1) meses` (dia ajustado ao último dia do mês quando não existe; sempre calculado a partir do dia de `firstDate`). Sem cartão: `dueDate = transactionDate`. Com cartão: `dueDate` pelo cálculo da fatura (D-025) a partir da `transactionDate` de cada parcela.
+- **Centavos (decisão do responsável):** `base = floor(total/N, 2 casas)`; a **primeira parcela absorve toda a diferença** (`total − base×N`, no máximo N−1 centavos). Ex.: 100,00 em 3x = 33,34 + 33,33 + 33,33. A soma das parcelas é **sempre** igual ao total.
+- Situação inicial de cada parcela: `Planned` se `transactionDate > hoje`, senão `Pending`. Descrição de cada parcela = descrição do plano; o número aparece em `installment { number, count }`.
+- 2 ≤ N ≤ 120. Parcelas individuais: **valor e datas imutáveis** (422); podem ser pagas, canceladas, e ter categoria/conta/observações editadas (e vencimento apenas sem cartão). **Não podem ser excluídas individualmente** (422).
+- Cancelar plano: cancela as parcelas **sem pagamento** que não estejam canceladas; parcelas com pagamento permanecem. Excluir plano: só se **nenhuma** parcela tiver pagamento (remove plano e parcelas); senão 422.
+- Estado do plano (derivado): `Canceled` se todas as parcelas canceladas; `Completed` se não há parcela em aberto (`restante > 0` e não cancelada); senão `Open`.
+
+## D-027 — Recorrências — Aceita
+- Passo: `Daily`=1 dia, `Weekly`=7 dias, `Biweekly`=14 dias, `Monthly`=1 mês, `Bimonthly`=2, `Quarterly`=3, `Semiannual`=6, `Annual`=12 meses, **multiplicado por `interval`** (padrão 1). `Custom` = a cada `interval` **dias**. Ocorrência *k* = `startDate + k×passo`; para meses, calculada **sempre a partir de `startDate`** (31/jan → 28/fev → 31/mar), nunca da ocorrência anterior.
+- Cada ocorrência é uma `Transaction` independente com `recurrenceRuleId` e `occurrenceDate`; **índice único (`recurrence_rule_id`, `occurrence_date`)** garante idempotência. `transactionDate = occurrenceDate`; sem cartão `dueDate = occurrenceDate`; com cartão, `dueDate` pela fatura. Situação inicial: `Planned` se a data > hoje, senão `Pending`.
+- **Horizonte:** gera até hoje + 12 meses (`Recurrence__HorizonMonths`, D-010), respeitando `endDate`. Gerado na criação/ativação/edição da regra e por um **serviço em segundo plano** (executa na inicialização e a cada `Recurrence__GenerationIntervalMinutes`, padrão 360). `Recurrence__BackgroundEnabled=false` desliga o serviço (testes). O gerador ignora datas que já tenham ocorrência (inclusive canceladas).
+- `startDate` ≥ hoje − 366 dias (ocorrências passadas são geradas e aparecem como atrasadas se em aberto). `type` e `startDate` são imutáveis.
+- **Editar/desativar (decisão do responsável):** ocorrências **futuras** (`transactionDate > hoje`) em `Planned`/`Pending`, **sem pagamentos** e **nunca editadas à mão** (`is_manually_edited = false`) são **removidas** e regeneradas com a nova regra (desativar apenas remove). Pagas, vencidas, canceladas e editadas à mão permanecem. Reativar regenera.
+- Ocorrências **não podem ser excluídas individualmente** (422: cancele-a ou desative a regra). Editar uma ocorrência (campos permitidos como em movimentações comuns) marca `is_manually_edited`. Regras não são excluídas, apenas desativadas.
+- Cartão: ocorrências de regra com cartão seguem D-025 (cartão inativo → a geração é ignorada e registrada em log).
+
+## D-028 — Relatórios — Técnica
+Base: movimentações **não canceladas** com `transactionDate` no período (mesma base dos totais do dashboard). Percentuais 0–100 com 2 casas; categorias agrupadas pela raiz (com detalhamento das subcategorias). "Comprometimento futuro" de parcelamentos usa a data efetiva `dueDate ?? transactionDate` e o **restante** das parcelas em aberto. O relatório de recorrências usa apenas ocorrências **já geradas** (sem estimativas). Relatórios de grupos: Etapa 4.
+
+## D-029 — Exclusão de conta estendida — Aceita (D-014)
+`DeleteAccount` passa a apagar também cartões, parcelamentos e recorrências do usuário (movimentações já eram apagadas). Teste obrigatório.

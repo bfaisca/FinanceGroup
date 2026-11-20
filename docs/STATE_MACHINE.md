@@ -38,3 +38,8 @@ Persistidos: `Planned`, `Pending`, `Paid`, `Received`, `Canceled`. **`Overdue` n
 4. `type` imutável.
 5. `paidAt` só existe quando liquidada.
 6. Cada transição relevante gera uma linha de histórico (`transaction_audit_entries`).
+
+## Etapa 3 — origem das movimentações
+- Parcelas e ocorrências de recorrência nascem `Planned` (data futura) ou `Pending` (data ≤ hoje) — D-026/D-027. Depois seguem exatamente a mesma máquina de estados (pagamentos, cancelar, reabrir, `Overdue` calculado).
+- Compras no cartão seguem a máquina normal; `dueDate` é o vencimento da fatura (D-025), logo uma compra de cartão em aberto fica `Overdue` quando a fatura vence sem pagamento.
+- Parcelas e ocorrências **não podem ser excluídas individualmente** (422), apenas canceladas.

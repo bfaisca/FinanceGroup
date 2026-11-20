@@ -357,6 +357,172 @@ Pagamentos parciais: `receivedIncome`/`paidExpense` somam `paidAmount`; `pending
 
 ---
 
+## 10. Adições às movimentações (Etapa 3) — **aditivas** ao §8
+
+```ts
+interface TransactionDto {
+  // ... campos do §8 ...
+  creditCardId: string | null;
+  creditCardName: string | null;
+  installment: { planId: string; number: number; count: number } | null;
+  recurrenceRuleId: string | null;      // não nulo = ocorrência de recorrência
+}
+// CreateTransactionRequest ganha: creditCardId?: string | null
+```
+
+- **Compra no cartão** (D-025): `creditCardId` só em `type = Expense`; com cartão, `accountId` e `dueDate` **não podem ser enviados** (`400 validation_error` em `errors.accountId` / `errors.dueDate`); `paymentMethod` deve ser nulo ou `CreditCard`. A resposta traz `accountId`/`accountName` = **nulos** e `dueDate` = **vencimento da fatura calculado pelo backend**. `creditCardId` é **imutável** (enviar outro valor no `PUT` → `422`). O frontend **não** calcula nem prevê o vencimento.
+- Cartão inexistente/de outro usuário no corpo → `400 validation_error` (`errors.creditCardId`); cartão inativo → `422`.
+- **Parcelas** (`installment != null`) e **ocorrências** (`recurrenceRuleId != null`): `DELETE` → `422 business_rule_violation`. Parcelas: alterar `amount`, `transactionDate` (e `dueDate` quando há cartão) no `PUT` → `422`. Editar uma ocorrência é permitido (marca-a como editada à mão, D-027).
+- Novos filtros em `GET /transactions`: `creditCardId`, `installmentPlanId`, `recurrenceRuleId`.
+- `GET /transactions?accountId=` inclui também compras de cartões associados à conta (conta efetiva, D-025).
+
+---
+
+## 11. Cartões de crédito — `/api/v1/credit-cards` (Bearer)
+
+```ts
+interface CreditCardDto {
+  id: string;
+  name: string;
+  institution: string | null;
+  creditLimit: number;
+  closingDay: number;   // 1–31
+  dueDay: number;       // 1–31
+  accountId: string | null;
+  accountName: string | null;
+  isActive: boolean;
+  usedLimit: number;       // D-025: soma do restante de tudo que está em aberto
+  availableLimit: number;  // creditLimit - usedLimit (negativo = limite excedido)
+  openInvoice: { closingDate: string; dueDate: string; amount: number }; // fatura que recebe compras feitas hoje (D-025)
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+| Método e rota | Corpo / query | Resposta |
+|---|---|---|
+| `GET /credit-cards` | `includeInactive` (padrão false) | `200 CreditCardDto[]` por `name` |
+| `POST /credit-cards` | `{ name, institution?, creditLimit, closingDay, dueDay, accountId? }` | `201 CreditCardDto` |
+| `GET /credit-cards/{id}` | — | `200 CreditCardDto` |
+| `PUT /credit-cards/{id}` | mesmo corpo do POST | `200 CreditCardDto` |
+| `POST /credit-cards/{id}/deactivate` | — | `200 CreditCardDto` |
+| `POST /credit-cards/{id}/activate` | — | `200 CreditCardDto` |
+
+Validações: `name` 1–100, único por usuário sem diferenciar maiúsculas (`409 conflict`); `institution` ≤ 100; `creditLimit` ≥ 0, 2 casas, ≤ 9.999.999.999.999,99; `closingDay`/`dueDay` inteiros 1–31; `accountId` (se enviado) do usuário e ativa (inexistente/de outro → `400 errors.accountId`). `openInvoice.closingDate` é a data de fechamento (dia ajustado ao mês). Compras do cartão: `GET /transactions?creditCardId={id}`.
+
+---
+
+## 12. Parcelamentos — `/api/v1/installment-plans` (Bearer)
+
+```ts
+type InstallmentPlanStatus = 'Open' | 'Completed' | 'Canceled';
+interface InstallmentPlanDto {
+  id: string; description: string; totalAmount: number; installmentCount: number;
+  firstDate: string;                       // DateOnly (D-026)
+  categoryId: string; categoryName: string;
+  accountId: string | null; accountName: string | null;
+  creditCardId: string | null; creditCardName: string | null;
+  paymentMethod: PaymentMethod | null;
+  status: InstallmentPlanStatus;
+  paidCount: number; openCount: number; canceledCount: number;
+  paidAmount: number; remainingAmount: number;   // somas de parcelas não canceladas
+  nextDueDate: string | null;              // menor data efetiva (dueDate ?? transactionDate) de parcela em aberto
+  createdAt: string;
+}
+interface InstallmentPlanDetailDto extends InstallmentPlanDto { installments: TransactionDto[]; } // ordem por número
+interface CreateInstallmentPlanRequest {
+  description: string; totalAmount: number; installmentCount: number; firstDate: string;
+  categoryId: string; accountId?: string | null; creditCardId?: string | null;
+  paymentMethod?: PaymentMethod | null; notes?: string | null;
+}
+```
+
+| Método e rota | Corpo / query | Resposta |
+|---|---|---|
+| `GET /installment-plans` | `page`, `pageSize`, `status?`, `sort` (`firstDate`\|`description`\|`totalAmount`\|`createdAt`; padrão `-createdAt`) | `200 PagedResult<InstallmentPlanDto>` |
+| `POST /installment-plans` | `CreateInstallmentPlanRequest` | `201 InstallmentPlanDetailDto` (parcelas geradas conforme D-026) |
+| `GET /installment-plans/{id}` | — | `200 InstallmentPlanDetailDto` |
+| `POST /installment-plans/{id}/cancel` | — | `200 InstallmentPlanDetailDto` |
+| `DELETE /installment-plans/{id}` | — | `204` (só se nenhuma parcela tem pagamento; senão `422`) |
+
+Validações: `description` 1–200; `totalAmount` > 0, 2 casas; `installmentCount` 2–120; `firstDate` válida; categoria ativa do tipo `Expense`; regras de cartão/conta como no §10 (com cartão: sem `accountId`, `paymentMethod` nulo/`CreditCard`); `notes` ≤ 1000. Parcelas são sempre despesas. Plano de outro usuário → `404`.
+
+---
+
+## 13. Recorrências — `/api/v1/recurrences` (Bearer)
+
+```ts
+interface RecurrenceDto {
+  id: string;
+  description: string; type: TransactionType; amount: number;
+  categoryId: string; categoryName: string;
+  accountId: string | null; accountName: string | null;
+  creditCardId: string | null; creditCardName: string | null;
+  paymentMethod: PaymentMethod | null; notes: string | null;
+  frequency: RecurrenceFrequency; interval: number;   // D-027
+  startDate: string; endDate: string | null;
+  isActive: boolean;
+  nextOccurrenceDate: string | null;   // próxima ocorrência futura (>= hoje) ainda não gerada ou gerada em aberto; null se encerrada/inativa
+  generatedCount: number;              // ocorrências já geradas (inclui canceladas)
+  createdAt: string; updatedAt: string;
+}
+interface CreateRecurrenceRequest {
+  description: string; type: TransactionType; amount: number; categoryId: string;
+  accountId?: string | null; creditCardId?: string | null; paymentMethod?: PaymentMethod | null; notes?: string | null;
+  frequency: RecurrenceFrequency; interval?: number;   // padrão 1
+  startDate: string; endDate?: string | null;
+}
+// UpdateRecurrenceRequest: mesmos campos, exceto `type` e `startDate` (imutáveis).
+```
+
+| Método e rota | Corpo / query | Resposta |
+|---|---|---|
+| `GET /recurrences` | `includeInactive` (padrão false) | `200 RecurrenceDto[]` por `description` |
+| `POST /recurrences` | `CreateRecurrenceRequest` | `201 RecurrenceDto` (gera ocorrências até o horizonte) |
+| `GET /recurrences/{id}` | — | `200 RecurrenceDto` |
+| `PUT /recurrences/{id}` | `UpdateRecurrenceRequest` | `200 RecurrenceDto` (regenera conforme D-027) |
+| `POST /recurrences/{id}/deactivate` | — | `200 RecurrenceDto` |
+| `POST /recurrences/{id}/activate` | — | `200 RecurrenceDto` |
+
+Validações: `description` 1–200; `amount` > 0; `interval` 1–365 (para `Custom` = dias); `startDate` ≥ hoje − 366 dias; `endDate` ≥ `startDate`; categoria ativa do mesmo `type`; cartão/conta como no §10 (cartão só em `Expense`). Ocorrências: `GET /transactions?recurrenceRuleId={id}`.
+
+---
+
+## 14. Relatórios — `/api/v1/reports` (Bearer)
+
+Base: D-028. `from`/`to` (DateOnly, obrigatórios, `from ≤ to`, intervalo ≤ 366 dias) nos relatórios por período.
+
+```ts
+interface ReportTotals { income: number; expense: number; result: number; receivedIncome: number; pendingIncome: number; paidExpense: number; pendingExpense: number; }
+interface ShareItem { total: number; percentage: number; }
+```
+
+| Rota | Query | Resposta |
+|---|---|---|
+| `GET /reports/summary` | `from`, `to`, `groupBy` = `day`\|`month` (padrão `month`) | `{ period, totals: ReportTotals, series: { key: string; income: number; expense: number; result: number }[] }` — `key` = `YYYY-MM-DD` ou `YYYY-MM`; períodos sem dados vêm zerados, em ordem cronológica |
+| `GET /reports/by-category` | `from`, `to`, `type` = `Expense`\|`Income` (padrão `Expense`) | `{ period, type, total, items: { categoryId, categoryName, color, total, percentage, subcategories: { categoryId, categoryName, total, percentage }[] }[] }` por total desc; percentuais das subcategorias são relativos ao total da **categoria raiz** |
+| `GET /reports/by-account` | `from`, `to`, `type` (padrão `Expense`) | `{ period, type, total, items: { accountId: string \| null; accountName: string; total; percentage }[] }` — conta efetiva (D-025); sem conta → `accountId: null`, `accountName: "Sem conta"` |
+| `GET /reports/by-payment-method` | `from`, `to`, `type` (padrão `Expense`) | `{ period, type, total, items: { paymentMethod: PaymentMethod \| null; total; percentage }[] }` — `null` = "Não informado" |
+| `GET /reports/monthly-evolution` | `months` 1–36 (padrão 12), `endMonth` `YYYY-MM` (padrão mês atual) | `{ items: { month: string; income: number; expense: number; result: number; cumulativeResult: number }[] }` cronológico; `cumulativeResult` = soma acumulada do `result` dentro da janela |
+| `GET /reports/installments` | `months` 1–36 (padrão 12) | `{ openPlans: number; totalRemaining: number; commitmentByMonth: { month: string; amount: number; installmentsCount: number }[]; plans: InstallmentPlanDto[] }` — `commitmentByMonth` cobre `months` meses a partir do **mês atual** (inclui atrasadas no mês corrente); `plans` = planos `Open` por `nextDueDate` |
+| `GET /reports/recurrences` | — | `{ activeRules: number; upcomingByMonth: { month: string; income: number; expense: number }[]; rules: { id; description; type; amount; frequency; interval; nextOccurrenceDate: string \| null; upcomingTotal12m: number }[] }` — usa só ocorrências **já geradas**, não canceladas, com data > hoje e ≤ hoje + 12 meses |
+
+Todos valores monetários com 2 casas; listas vazias quando não há dados; usuário só vê os próprios dados.
+
+---
+
+## 15. Dashboard — adição da Etapa 3 (aditiva ao §9)
+
+```ts
+interface DashboardDto {
+  // ... campos do §9 ...
+  creditCards: { id: string; name: string; creditLimit: number; usedLimit: number; availableLimit: number;
+                 openInvoice: { closingDate: string; dueDate: string; amount: number } }[]; // cartões ATIVOS, por nome
+}
+```
+
+---
+
 ## Changelog
 
 | Data | Versão | Alteração | Autor |
@@ -366,3 +532,4 @@ Pagamentos parciais: `receivedIncome`/`paidExpense` somam `paidAmount`; `pending
 | 2026-11-18 | 1.0.2 | `detail` documentado como opcional no exemplo de erro; regra para novos `code` | Coordenação |
 | 2026-11-18 | 1.1 | Etapa 2: contas, snapshots, categorias, movimentações, pagamentos, histórico e dashboard individual (seções 6–9) | Coordenação (backend implementa) |
 | 2026-11-18 | 1.1.1 | Esclarecimentos da implementação da Etapa 2 (**sem alterar rotas, DTOs ou códigos**): `pageSize` fora de 1–100 e `sort` desconhecido → `400 validation_error`; `categoryId`/`accountId`/`parentCategoryId` inexistentes ou de outro usuário no **corpo** → `400 validation_error` com `errors.<campo>` (mesma mensagem nos dois casos); categoria/conta inativa → `422`; subcategoria com tipo diferente do pai ou profundidade > 1 → `422`; `POST .../payments` responde `201` com o `TransactionDetailDto` atualizado; `payments` do detalhe em ordem cronológica; histórico: `field` ∈ `description, amount, category, account, paymentMethod, transactionDate, dueDate, notes, status, payment` (`category`/`account` trazem os **nomes**); `status` em `PUT` só vale para movimentações sem pagamentos (`Planned` com pagamentos → `422`); período do dashboard conta dias inclusivos (máx. 366); pagamentos simultâneos que perdem a disputa recebem `409 conflict` ou `422` | Backend |
+| 2026-11-20 | 1.2 | Etapa 3: cartões, compras no cartão, parcelamentos, recorrências, relatórios, resumo de cartões no dashboard (seções 10–15; aditivo) | Coordenação (backend implementa) |
