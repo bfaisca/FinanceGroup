@@ -20,7 +20,7 @@ Contas + snapshots + saldo projetado; categorias (seed padrão, personalizadas, 
 
 ## Etapa 3 — Recursos financeiros ✅
 Contratos: `API_CONTRACTS.md` §10–15 · Regras: D-025 a D-029, `STATE_MACHINE.md`.
-Cartões (regra D-003); parcelamentos (distribuição de centavos na última parcela); recorrências (horizonte D-010, idempotência); relatórios.
+Cartões (regra D-003); parcelamentos (diferença de centavos na primeira parcela (D-026)); recorrências (horizonte D-010, idempotência); relatórios.
 
 ## Etapa 4 — Grupos ⬜
 Grupos, convites por token (hash), participantes (saída preserva histórico), movimentações compartilhadas (DTO sem dados privados), dashboard consolidado (participação por autor **e** por pagador, separadas).
