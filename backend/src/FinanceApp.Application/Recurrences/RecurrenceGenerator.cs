@@ -45,7 +45,7 @@ public sealed partial class RecurrenceGenerator(IAppDbContext db, IDateTimeProvi
                 LogGenerated(ruleId, created.Count);
                 return created.Count;
             }
-            catch (UniqueConstraintViolationException)
+            catch (Exception ex) when (ex is UniqueConstraintViolationException or ConcurrencyConflictException)
             {
                 // Outra execução gravou as mesmas ocorrências ao mesmo tempo ("já existe"): descarta e recalcula o que falta.
                 db.ChangeTracker.Clear();
@@ -100,7 +100,7 @@ public sealed partial class RecurrenceGenerator(IAppDbContext db, IDateTimeProvi
         var horizon = today.AddMonths(horizonMonths);
         var existing = (await db.Transactions
                 .AsNoTracking()
-                .Where(t => t.RecurrenceRuleId == rule.Id)
+                .Where(t => t.RecurrenceRuleId == rule.Id && t.GroupId == null)
                 .Select(t => t.OccurrenceDate!.Value)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false))

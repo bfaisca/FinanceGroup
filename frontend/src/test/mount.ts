@@ -20,9 +20,11 @@ export function makeRouter(routes: RouteRecordRaw[] = []) {
     'installments',
     'recurrences',
     'reports',
+    'groups',
   ]
   const defaults: RouteRecordRaw[] = names.map((name) => ({ path: `/${name}`, name, component: Blank }))
   defaults.push({ path: '/accounts/:id', name: 'account-detail', component: Blank })
+  defaults.push({ path: '/groups/:id', name: 'group-detail', component: Blank })
   defaults.push({ path: '/:pathMatch(.*)*', name: 'catch-all', component: Blank })
   return createRouter({ history: createMemoryHistory(), routes: [...defaults, ...routes] })
 }

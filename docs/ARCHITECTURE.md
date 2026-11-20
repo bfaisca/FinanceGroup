@@ -93,8 +93,8 @@ Tabelas em `snake_case`. Valores monetários `numeric(18,2)`. PKs UUID. Etapa em
 | `installment_plans` | 3 | `total_amount`, `installment_count`, `first_due_date` |
 | `recurrence_rules` | 3 | `frequency`, `interval`, `start_date`, `end_date?`, `next_occurrence`, template da movimentação |
 | `groups` | 4 | `created_by_user_id`, `is_active` |
-| `group_members` | 4 | único (`group_id`, `user_id`) — reativação reutiliza a linha e preserva histórico em `group_member_events` |
-| `group_invitations` | 4 | `token_hash` único, `expires_at`, `status` |
+| `group_members` | 4 | único (`group_id`, `user_id`) — reativação reutiliza a mesma linha (papel volta a `Member`, `joined_at` renovado, `left_at` limpo); o histórico de participação fica nas próprias linhas (`status`, `left_at`) — a tabela `group_member_events` não foi criada |
+| `group_invitations` | 4 | `token_hash` único (SHA-256 hex), `expires_at`, `status`; único parcial (`group_id`, `email`) onde `status = 'Pending'`. Migration `Etapa4_Groups` (também cria `transactions.group_id` com FK, check `ck_transactions_group_rules` — movimentação de grupo sem conta/cartão/parcelamento/recorrência — e índices parciais por `group_id`) |
 
 ## 5. Frontend
 

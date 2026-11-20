@@ -8,7 +8,7 @@ namespace FinanceApp.Application.Accounts;
 public sealed record AccountBalanceInfo(SnapshotReference? Reference, decimal? ProjectedBalance);
 
 /// <summary>
-/// Calcula o saldo projetado (D-019) com agregação no banco. As contas recebidas já devem ter sido
+/// Calcula o saldo projetado (D-019, estendido por D-025 e D-033) com agregação no banco. As contas recebidas já devem ter sido
 /// filtradas pelo usuário autenticado pelo chamador.
 /// </summary>
 public sealed class BalanceProjectionService(IAppDbContext db)
@@ -58,7 +58,8 @@ public sealed class BalanceProjectionService(IAppDbContext db)
                     .AsNoTracking()
                     // Conta efetiva (D-025): movimentações da conta + compras de cartões associados a ela.
                     // A data efetiva das compras no cartão é o vencimento da fatura (dueDate gravado).
-                    .Where(t => (t.AccountId == accountId || (t.CreditCardId != null && t.CreditCard!.AccountId == accountId))
+                    .Where(t => t.GroupId == null
+                                && (t.AccountId == accountId || (t.CreditCardId != null && t.CreditCard!.AccountId == accountId))
                                 && t.Status != TransactionStatus.Canceled
                                 && (t.DueDate ?? t.TransactionDate) > referenceDate
                                 && (t.DueDate ?? t.TransactionDate) <= asOf)
@@ -68,6 +69,23 @@ public sealed class BalanceProjectionService(IAppDbContext db)
                     .ConfigureAwait(false);
                 income = totals.Where(t => t.Type == TransactionType.Income).Sum(t => t.Total);
                 expense = totals.Where(t => t.Type == TransactionType.Expense).Sum(t => t.Total);
+
+                // D-033: pagamentos de movimentações de GRUPO feitos com esta conta (do próprio pagador) entram na paymentDate,
+                // pelo valor PAGO (despesa subtrai, receita soma). Movimentações canceladas ficam fora (STATE_MACHINE.md).
+                var groupPayments = await (
+                        from p in db.TransactionPayments.AsNoTracking()
+                        join t in db.Transactions.AsNoTracking() on p.TransactionId equals t.Id
+                        where p.AccountId == accountId
+                              && t.GroupId != null
+                              && t.Status != TransactionStatus.Canceled
+                              && p.PaymentDate > referenceDate
+                              && p.PaymentDate <= asOf
+                        group p by t.Type into g
+                        select new { Type = g.Key, Total = g.Sum(p => p.Amount) })
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                income += groupPayments.Where(t => t.Type == TransactionType.Income).Sum(t => t.Total);
+                expense += groupPayments.Where(t => t.Type == TransactionType.Expense).Sum(t => t.Total);
             }
 
             result[accountId] = new AccountBalanceInfo(

@@ -39,7 +39,7 @@ public sealed class CreditCardSummaryService(IAppDbContext db)
 
         var used = await db.Transactions
             .AsNoTracking()
-            .Where(t => t.CreditCardId != null && ids.Contains(t.CreditCardId.Value) && t.Status != TransactionStatus.Canceled)
+            .Where(t => t.GroupId == null && t.CreditCardId != null && ids.Contains(t.CreditCardId.Value) && t.Status != TransactionStatus.Canceled)
             .GroupBy(t => t.CreditCardId!.Value)
             .Select(g => new { CardId = g.Key, Used = g.Sum(t => t.Amount - t.PaidAmount) })
             .ToDictionaryAsync(x => x.CardId, x => x.Used, cancellationToken)
@@ -47,7 +47,7 @@ public sealed class CreditCardSummaryService(IAppDbContext db)
 
         var invoiceRows = await db.Transactions
             .AsNoTracking()
-            .Where(t => t.CreditCardId != null && ids.Contains(t.CreditCardId.Value) && t.Status != TransactionStatus.Canceled
+            .Where(t => t.GroupId == null && t.CreditCardId != null && ids.Contains(t.CreditCardId.Value) && t.Status != TransactionStatus.Canceled
                         && t.DueDate != null && dueDates.Contains(t.DueDate.Value))
             .GroupBy(t => new { CardId = t.CreditCardId!.Value, DueDate = t.DueDate!.Value })
             .Select(g => new { g.Key.CardId, g.Key.DueDate, Amount = g.Sum(t => t.Amount - t.PaidAmount) })

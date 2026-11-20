@@ -5,7 +5,7 @@ import Message from 'primevue/message'
 import LoginForm from '../components/LoginForm.vue'
 import { useAuthStore } from '@/stores/auth'
 import { toAppError } from '@/utils/problem'
-import { safeRedirect } from '@/utils/redirect'
+import { isInvitationRedirect, safeRedirect } from '@/utils/redirect'
 import type { LoginRequest } from '@/types/api'
 
 const auth = useAuthStore()
@@ -17,6 +17,7 @@ const errorMessage = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string[]>>({})
 
 const sessionExpired = computed(() => route.query.reason === 'expired')
+const fromInvitation = computed(() => isInvitationRedirect(route.query.redirect))
 
 async function onSubmit(request: LoginRequest): Promise<void> {
   loading.value = true
@@ -45,6 +46,10 @@ async function onSubmit(request: LoginRequest): Promise<void> {
 
     <Message v-if="sessionExpired && !errorMessage" severity="warn" class="auth-page__notice">
       Sua sessão expirou. Entre novamente para continuar.
+    </Message>
+
+    <Message v-if="fromInvitation" severity="info" class="auth-page__notice" data-testid="invitation-notice">
+      Você recebeu um convite para um grupo. Entre ou crie uma conta com o e-mail do convite para aceitá-lo.
     </Message>
 
     <LoginForm :loading="loading" :error-message="errorMessage" :field-errors="fieldErrors" @submit="onSubmit" />

@@ -63,7 +63,7 @@ public sealed class DashboardService(
     }
 
     private IQueryable<Transaction> ActiveTransactions(Guid userId) =>
-        db.Transactions.AsNoTracking().Where(t => t.CreatedByUserId == userId && t.Status != TransactionStatus.Canceled);
+        db.Transactions.AsNoTracking().Where(t => t.CreatedByUserId == userId && t.GroupId == null && t.Status != TransactionStatus.Canceled);
 
     private async Task<DashboardBalanceDto> GetBalanceAsync(Guid userId, DateOnly asOf, CancellationToken cancellationToken)
     {

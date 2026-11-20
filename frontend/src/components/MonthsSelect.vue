@@ -27,10 +27,18 @@ const model = defineModel<number>({ required: true })
 
 <style scoped>
 .months-select {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
   align-items: center;
+}
+
+.months-select :deep(.p-selectbutton) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .months-select__label {

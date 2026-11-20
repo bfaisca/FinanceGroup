@@ -29,7 +29,7 @@ internal static class RecurrenceProjections
         var ids = rules.Select(r => r.Id).ToList();
         var counts = await db.Transactions
             .AsNoTracking()
-            .Where(t => t.RecurrenceRuleId != null && ids.Contains(t.RecurrenceRuleId.Value))
+            .Where(t => t.GroupId == null && t.RecurrenceRuleId != null && ids.Contains(t.RecurrenceRuleId.Value))
             .GroupBy(t => t.RecurrenceRuleId!.Value)
             .Select(g => new { RuleId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.RuleId, x => x.Count, cancellationToken)
@@ -37,7 +37,7 @@ internal static class RecurrenceProjections
 
         var closed = (await db.Transactions
                 .AsNoTracking()
-                .Where(t => t.RecurrenceRuleId != null && ids.Contains(t.RecurrenceRuleId.Value)
+                .Where(t => t.GroupId == null && t.RecurrenceRuleId != null && ids.Contains(t.RecurrenceRuleId.Value)
                             && t.OccurrenceDate >= today
                             && (t.Status == TransactionStatus.Paid || t.Status == TransactionStatus.Received || t.Status == TransactionStatus.Canceled))
                 .Select(t => new { RuleId = t.RecurrenceRuleId!.Value, Date = t.OccurrenceDate!.Value })

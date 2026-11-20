@@ -1,6 +1,7 @@
 using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Categories;
 using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Installments;
 using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
@@ -42,6 +43,10 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
             t.HasCheckConstraint(
                 "ck_transactions_installment_number_range",
                 "installment_number IS NULL OR installment_number BETWEEN 1 AND 120");
+            // Etapa 4 (D-032): movimentação de grupo nunca tem conta, cartão, parcelamento nem recorrência.
+            t.HasCheckConstraint(
+                "ck_transactions_group_rules",
+                "group_id IS NULL OR (account_id IS NULL AND credit_card_id IS NULL AND installment_plan_id IS NULL AND recurrence_rule_id IS NULL)");
         });
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
@@ -64,6 +69,10 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
         builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(t => t.PaidByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Group>()
+            .WithMany()
+            .HasForeignKey(t => t.GroupId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(t => t.Account)
             .WithMany()
@@ -103,6 +112,14 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
         builder.HasIndex(t => new { t.CreatedByUserId, t.TransactionDate });
         builder.HasIndex(t => t.AccountId);
         builder.HasIndex(t => t.CategoryId);
+
+        // Etapa 4: listagens e dashboard do grupo (por data) e filtros por autor.
+        builder.HasIndex(t => new { t.GroupId, t.TransactionDate })
+            .HasFilter("group_id IS NOT NULL")
+            .HasDatabaseName("ix_transactions_group_id_transaction_date");
+        builder.HasIndex(t => new { t.GroupId, t.CreatedByUserId })
+            .HasFilter("group_id IS NOT NULL")
+            .HasDatabaseName("ix_transactions_group_id_created_by_user_id");
         builder.HasIndex(t => new { t.CreditCardId, t.DueDate })
             .HasFilter("credit_card_id IS NOT NULL")
             .HasDatabaseName("ix_transactions_credit_card_id_due_date");
@@ -146,6 +163,8 @@ internal sealed class TransactionPaymentConfiguration : IEntityTypeConfiguration
 
         builder.HasIndex(p => p.TransactionId);
         builder.HasIndex(p => p.AccountId);
+        // Etapa 4: pagamentos por pagador (filtro "paidByUserId", dashboard do grupo).
+        builder.HasIndex(p => new { p.CreatedByUserId, p.TransactionId });
     }
 }
 

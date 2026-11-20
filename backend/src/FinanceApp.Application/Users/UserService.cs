@@ -3,6 +3,7 @@ using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Application.Common.Validation;
 using FinanceApp.Domain.Auth;
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Users;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +81,7 @@ public sealed partial class UserService(
         }
 
         var now = clock.UtcNow;
+        await LeaveGroupsAsync(user.Id, now, cancellationToken).ConfigureAwait(false);
         await RemoveIndividualFinancialDataAsync(user.Id, cancellationToken).ConfigureAwait(false);
         user.Anonymize(now);
         await db.RevokeActiveRefreshTokensAsync(user.Id, now, RefreshTokenRevocationReason.AccountDeleted, cancellationToken).ConfigureAwait(false);
@@ -91,14 +93,55 @@ public sealed partial class UserService(
     }
 
     /// <summary>
+    /// D-036: as participações ativas passam a <c>Left</c> (com transferência da propriedade quando o usuário era Owner, ou
+    /// arquivamento do grupo se não restar ninguém) e os convites pendentes enviados por ele são revogados. As movimentações e
+    /// os pagamentos de grupo permanecem no histórico (autor "Usuário removido").
+    /// </summary>
+    private async Task LeaveGroupsAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var groups = await db.Groups.AsTracking()
+            .Include(g => g.Members)
+            .Where(g => g.Members.Any(m => m.UserId == userId && m.Status == GroupMemberStatus.Active))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var group in groups)
+        {
+            group.DepartBecauseAccountDeleted(userId, now);
+        }
+
+        var invitations = await db.GroupInvitations.AsTracking()
+            .Where(i => i.InvitedByUserId == userId && i.Status == GroupInvitationStatus.Pending)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var invitation in invitations)
+        {
+            invitation.RevokeIfPending(now);
+        }
+    }
+
+    /// <summary>
     /// Marca para exclusão todos os dados individuais do usuário (persistidos junto com a anonimização).
     /// Pagamentos e histórico das movimentações e os saldos das contas saem por cascata no banco.
-    /// A Etapa 3 estendeu esta rotina com cartões, parcelamentos e recorrências (D-029); a Etapa 4 deve tratar grupos: movimentações de grupo permanecem
-    /// (autor exibido como "Usuário removido", conta/cartão desvinculados).
+    /// A Etapa 3 estendeu esta rotina com cartões, parcelamentos e recorrências (D-029). Etapa 4 (D-014/D-036): somente
+    /// movimentações SEM grupo são apagadas; as de grupo permanecem (autor anonimizado), a conta dos pagamentos de grupo é
+    /// desvinculada e as categorias personalizadas usadas por elas são preservadas (inativas) para não corromper o histórico do grupo.
     /// </summary>
     private async Task RemoveIndividualFinancialDataAsync(Guid userId, CancellationToken cancellationToken)
     {
-        var transactions = await db.Transactions.Where(t => t.CreatedByUserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        // Pagamentos de grupo feitos com contas do usuário: a conta é privada e será apagada; o pagamento fica sem conta.
+        var groupPayments = await (
+                from p in db.TransactionPayments.AsTracking()
+                join t in db.Transactions on p.TransactionId equals t.Id
+                where p.CreatedByUserId == userId && p.AccountId != null && t.GroupId != null
+                select p)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var payment in groupPayments)
+        {
+            payment.DetachAccount();
+        }
+
+        var transactions = await db.Transactions.Where(t => t.CreatedByUserId == userId && t.GroupId == null).ToListAsync(cancellationToken).ConfigureAwait(false);
         db.Transactions.RemoveRange(transactions);
 
         // Etapa 3 (D-029): parcelamentos, recorrências e cartões também são dados individuais. As movimentações geradas por eles
@@ -115,8 +158,28 @@ public sealed partial class UserService(
         var accounts = await db.Accounts.Where(a => a.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
         db.Accounts.RemoveRange(accounts);
 
+        // Categorias personalizadas: apaga as que não classificam movimentações de grupo (e nem são pai de uma que classifica).
         var categories = await db.Categories.Where(c => c.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
-        db.Categories.RemoveRange(categories);
+        var usedByGroups = (await db.Transactions.AsNoTracking()
+                .Where(t => t.CreatedByUserId == userId && t.GroupId != null)
+                .Select(t => t.CategoryId)
+                .Distinct()
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .ToHashSet();
+        var keep = categories.Where(c => usedByGroups.Contains(c.Id)).ToList();
+        var keepIds = keep.Select(c => c.Id).Concat(keep.Where(c => c.ParentCategoryId is not null).Select(c => c.ParentCategoryId!.Value)).ToHashSet();
+        foreach (var category in categories)
+        {
+            if (keepIds.Contains(category.Id))
+            {
+                category.Deactivate();
+            }
+            else
+            {
+                db.Categories.Remove(category);
+            }
+        }
     }
 
     /// <summary>Usuário inexistente ou inativo com JWT ainda válido é tratado como não autenticado.</summary>

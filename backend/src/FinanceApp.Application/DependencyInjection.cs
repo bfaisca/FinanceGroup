@@ -4,6 +4,7 @@ using FinanceApp.Application.Categories;
 using FinanceApp.Application.CreditCards;
 using FinanceApp.Application.Dashboard;
 using FinanceApp.Application.Emails;
+using FinanceApp.Application.Groups;
 using FinanceApp.Application.Installments;
 using FinanceApp.Application.Recurrences;
 using FinanceApp.Application.Reports;
@@ -20,6 +21,7 @@ public static class DependencyInjection
     {
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>(ServiceLifetime.Singleton);
         services.AddSingleton<PasswordResetEmailFactory>();
+        services.AddSingleton<GroupInvitationEmailFactory>();
         services.AddScoped<AuthService>();
         services.AddScoped<UserService>();
         services.AddScoped<BalanceProjectionService>();
@@ -33,6 +35,11 @@ public static class DependencyInjection
         services.AddScoped<RecurrenceService>();
         services.AddScoped<ReportService>();
         services.AddScoped<DashboardService>();
+        services.AddScoped<GroupAccess>();
+        services.AddScoped<GroupService>();
+        services.AddScoped<GroupInvitationService>();
+        services.AddScoped<GroupTransactionService>();
+        services.AddScoped<GroupDashboardService>();
         return services;
     }
 }

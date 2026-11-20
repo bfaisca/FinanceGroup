@@ -122,7 +122,7 @@ function setMonths(value: number): void {
 
     <p class="reports-page__footnote">
       <i class="pi pi-info-circle" aria-hidden="true" />
-      Relatórios de grupos chegam com a etapa de Grupos.
+      Estes relatórios são individuais. A visão consolidada de cada grupo fica no dashboard do grupo (menu Grupos).
     </p>
   </div>
 </template>

@@ -36,6 +36,14 @@ public sealed class Transaction
     /// </summary>
     public Guid? PaidByUserId { get; private set; }
 
+    /// <summary>
+    /// Grupo dono da movimentação (Etapa 4). Nulo = movimentação individual. Movimentações de grupo nunca têm conta, cartão,
+    /// parcelamento nem recorrência (D-032); a conta do pagador fica apenas no pagamento e é privada (D-033).
+    /// </summary>
+    public Guid? GroupId { get; private set; }
+
+    public bool IsGroupTransaction => GroupId is not null;
+
     public Guid? AccountId { get; private set; }
 
     /// <summary>Cartão de crédito da compra (opcional, imutável depois de criada — D-025). Só despesas.</summary>
@@ -205,6 +213,33 @@ public sealed class Transaction
         return transaction;
     }
 
+    /// <summary>
+    /// Cria uma movimentação de um grupo (D-032): sem conta/cartão/parcelamento/recorrência. A categoria deve ser padrão
+    /// do sistema ou do próprio criador. A permissão de criar (membro ativo de grupo ativo) é verificada por quem chama.
+    /// </summary>
+    public static Transaction CreateForGroup(
+        Guid groupId,
+        Guid createdByUserId,
+        string description,
+        TransactionType type,
+        decimal amount,
+        Category category,
+        PaymentMethod? paymentMethod,
+        TransactionStatus status,
+        DateOnly transactionDate,
+        DateOnly? dueDate,
+        string? notes,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(category);
+        Guard.NotEmpty(groupId, "O grupo é obrigatório.");
+        EnsureGroupCategory(category, createdByUserId);
+        var transaction = Create(
+            createdByUserId, description, type, amount, category, null, paymentMethod, status, transactionDate, dueDate, notes, now);
+        transaction.GroupId = groupId;
+        return transaction;
+    }
+
     // ------------------------------------------------------------------ leitura
 
     /// <summary>Estado apresentado: <c>Overdue</c> quando não liquidada, com vencimento anterior a <paramref name="today"/>.</summary>
@@ -245,7 +280,17 @@ public sealed class Transaction
         CreditCard? creditCard = null)
     {
         ArgumentNullException.ThrowIfNull(category);
+        EnsureGroupAuthor(userId, "Somente quem cadastrou a movimentação pode editá-la.");
         EnsureNotCanceled("Movimentações canceladas não podem ser editadas. Reabra a movimentação antes.");
+        if (GroupId is not null)
+        {
+            if (account is not null || creditCard is not null)
+            {
+                throw new DomainException("Movimentações de grupo não aceitam conta nem cartão.");
+            }
+
+            EnsureGroupCategory(category, userId);
+        }
 
         // Parcelas: valor e data são imutáveis (D-026).
         if (InstallmentPlanId is not null)
@@ -423,6 +468,10 @@ public sealed class Transaction
         }
 
         account?.EnsureActive("A conta selecionada está desativada.");
+        if (GroupId is not null && account is not null && account.UserId != userId)
+        {
+            throw new DomainException("A conta do pagamento deve ser do próprio pagador.");
+        }
 
         var utcNow = Guard.Utc(now);
         var payment = TransactionPayment.Create(Id, amount, paymentDate, userId, account?.Id, EnsureMethod(paymentMethod), utcNow);
@@ -453,6 +502,10 @@ public sealed class Transaction
         EnsurePaymentsLoaded();
         var payment = payments.FirstOrDefault(p => p.Id == paymentId)
             ?? throw new DomainException("Pagamento não encontrado nesta movimentação.");
+        if (GroupId is not null && payment.CreatedByUserId != userId)
+        {
+            throw new PermissionDeniedException("Somente quem registrou o pagamento pode removê-lo.");
+        }
 
         var utcNow = Guard.Utc(now);
         payments.Remove(payment);
@@ -469,6 +522,7 @@ public sealed class Transaction
     /// <summary>Cancela preservando os pagamentos; a movimentação sai de totais e do saldo projetado.</summary>
     public void Cancel(Guid userId, DateTimeOffset now)
     {
+        EnsureGroupAuthor(userId, "Somente quem cadastrou a movimentação pode cancelá-la.");
         if (Status == TransactionStatus.Canceled)
         {
             throw new DomainException("A movimentação já está cancelada.");
@@ -486,6 +540,7 @@ public sealed class Transaction
     /// <summary>Reabre uma movimentação cancelada; o estado é derivado dos pagamentos (sem pagamentos → Pending).</summary>
     public void Reopen(Guid userId, DateTimeOffset now)
     {
+        EnsureGroupAuthor(userId, "Somente quem cadastrou a movimentação pode reabri-la.");
         if (Status != TransactionStatus.Canceled)
         {
             throw new DomainException("Somente movimentações canceladas podem ser reabertas.");
@@ -507,6 +562,13 @@ public sealed class Transaction
 
         UpdatedAt = utcNow;
         AddAudit(userId, TransactionAuditAction.Reopened, "status", TransactionStatus.Canceled.ToString(), Status.ToString(), utcNow);
+    }
+
+    /// <summary>Exclusão por um usuário específico: em movimentações de grupo, somente o criador (D-032); depois, as regras de D-020.</summary>
+    public void EnsureCanBeDeleted(Guid userId)
+    {
+        EnsureGroupAuthor(userId, "Somente quem cadastrou a movimentação pode excluí-la.");
+        EnsureCanBeDeleted();
     }
 
     /// <summary>Movimentações com pagamentos só podem ser canceladas, nunca excluídas (D-020).</summary>
@@ -532,6 +594,30 @@ public sealed class Transaction
     }
 
     // ------------------------------------------------------------------ internos
+
+    /// <summary>
+    /// Em movimentações de grupo, somente quem as cadastrou pode editar, cancelar, reabrir ou excluir (CLAUDE.md §6, D-032);
+    /// o papel de administrador não concede essa permissão. Permite ao chamador falhar com 403 antes de outras verificações.
+    /// </summary>
+    public void EnsureCanBeChangedBy(Guid userId) =>
+        EnsureGroupAuthor(userId, "Somente quem cadastrou a movimentação pode alterá-la.");
+
+    /// <summary>Movimentações de grupo só são alteradas por quem as cadastrou (CLAUDE.md §6, D-032).</summary>
+    private void EnsureGroupAuthor(Guid userId, string message)
+    {
+        if (GroupId is not null && userId != CreatedByUserId)
+        {
+            throw new PermissionDeniedException(message);
+        }
+    }
+
+    private static void EnsureGroupCategory(Category category, Guid creatorUserId)
+    {
+        if (!category.IsDefault && category.UserId != creatorUserId)
+        {
+            throw new DomainException("A categoria deve ser padrão do sistema ou do próprio usuário.");
+        }
+    }
 
     private TransactionStatus ResolveStatusAfterAmountChange(decimal newAmount, TransactionStatus? requestedStatus)
     {

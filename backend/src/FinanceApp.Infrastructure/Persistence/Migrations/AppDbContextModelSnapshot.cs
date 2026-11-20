@@ -494,6 +494,181 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Groups.Group", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_groups");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_groups_created_by_user_id");
+
+                    b.ToTable("groups", (string)null);
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Groups.GroupInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
+                    b.Property<Guid>("InvitedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_by_user_id");
+
+                    b.Property<DateTimeOffset?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("responded_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_group_invitations");
+
+                    b.HasIndex("InvitedByUserId")
+                        .HasDatabaseName("ix_group_invitations_invited_by_user_id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_group_invitations_token_hash");
+
+                    b.HasIndex("GroupId", "CreatedAt")
+                        .HasDatabaseName("ix_group_invitations_group_id_created_at");
+
+                    b.HasIndex("GroupId", "Email")
+                        .IsUnique()
+                        .HasDatabaseName("ux_group_invitations_group_id_email_pending")
+                        .HasFilter("status = 'Pending'");
+
+                    b.ToTable("group_invitations", (string)null);
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Groups.GroupMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
+                    b.Property<DateTimeOffset>("JoinedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("joined_at");
+
+                    b.Property<DateTimeOffset?>("LeftAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("left_at");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("role");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_group_members");
+
+                    b.HasIndex("GroupId", "Status")
+                        .HasDatabaseName("ix_group_members_group_id_status");
+
+                    b.HasIndex("GroupId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_group_members_group_id_user_id");
+
+                    b.HasIndex("UserId", "Status")
+                        .HasDatabaseName("ix_group_members_user_id_status");
+
+                    b.ToTable("group_members", (string)null);
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Installments.InstallmentPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -730,6 +905,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("due_date");
 
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
                     b.Property<int?>("InstallmentNumber")
                         .HasColumnType("integer")
                         .HasColumnName("installment_number");
@@ -824,6 +1003,14 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_transactions_credit_card_id_due_date")
                         .HasFilter("credit_card_id IS NOT NULL");
 
+                    b.HasIndex("GroupId", "CreatedByUserId")
+                        .HasDatabaseName("ix_transactions_group_id_created_by_user_id")
+                        .HasFilter("group_id IS NOT NULL");
+
+                    b.HasIndex("GroupId", "TransactionDate")
+                        .HasDatabaseName("ix_transactions_group_id_transaction_date")
+                        .HasFilter("group_id IS NOT NULL");
+
                     b.HasIndex("InstallmentPlanId", "InstallmentNumber")
                         .IsUnique()
                         .HasDatabaseName("ux_transactions_installment_plan_id_number");
@@ -839,6 +1026,8 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_transactions_credit_card_rules", "credit_card_id IS NULL OR (type = 'Expense' AND account_id IS NULL AND payment_method = 'CreditCard')");
 
                             t.HasCheckConstraint("ck_transactions_due_date_after_date", "due_date IS NULL OR due_date >= transaction_date");
+
+                            t.HasCheckConstraint("ck_transactions_group_rules", "group_id IS NULL OR (account_id IS NULL AND credit_card_id IS NULL AND installment_plan_id IS NULL AND recurrence_rule_id IS NULL)");
 
                             t.HasCheckConstraint("ck_transactions_installment_number_range", "installment_number IS NULL OR installment_number BETWEEN 1 AND 120");
 
@@ -950,11 +1139,11 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.HasIndex("AccountId")
                         .HasDatabaseName("ix_transaction_payments_account_id");
 
-                    b.HasIndex("CreatedByUserId")
-                        .HasDatabaseName("ix_transaction_payments_created_by_user_id");
-
                     b.HasIndex("TransactionId")
                         .HasDatabaseName("ix_transaction_payments_transaction_id");
+
+                    b.HasIndex("CreatedByUserId", "TransactionId")
+                        .HasDatabaseName("ix_transaction_payments_created_by_user_id_transaction_id");
 
                     b.ToTable("transaction_payments", null, t =>
                         {
@@ -1083,6 +1272,50 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Navigation("Account");
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Groups.Group", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_groups_users_created_by_user_id");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Groups.GroupInvitation", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Groups.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_group_invitations_groups_group_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("InvitedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_group_invitations_users_invited_by_user_id");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Groups.GroupMember", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Groups.Group", null)
+                        .WithMany("Members")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_group_members_groups_group_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_group_members_users_user_id");
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Installments.InstallmentPlan", b =>
                 {
                     b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
@@ -1181,6 +1414,12 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_transactions_credit_cards_credit_card_id");
 
+                    b.HasOne("FinanceApp.Domain.Groups.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_groups_group_id");
+
                     b.HasOne("FinanceApp.Domain.Installments.InstallmentPlan", "InstallmentPlan")
                         .WithMany()
                         .HasForeignKey("InstallmentPlanId")
@@ -1248,6 +1487,11 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_transaction_payments_transactions_transaction_id");
 
                     b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Groups.Group", b =>
+                {
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>

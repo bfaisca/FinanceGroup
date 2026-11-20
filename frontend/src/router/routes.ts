@@ -61,6 +61,19 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Grupos' },
       },
       {
+        path: 'groups/:id',
+        name: 'group-detail',
+        component: () => import('@/modules/groups/pages/GroupDetailPage.vue'),
+        meta: { title: 'Grupo' },
+      },
+      {
+        // Dentro do layout autenticado: sem sessão, o guard envia ao login e retorna a este link (com o token).
+        path: 'invitations/:token',
+        name: 'invitation',
+        component: () => import('@/modules/groups/pages/InvitationPage.vue'),
+        meta: { title: 'Convite para grupo' },
+      },
+      {
         path: 'reports',
         name: 'reports',
         component: () => import('@/modules/reports/pages/ReportsPage.vue'),

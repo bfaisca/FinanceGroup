@@ -224,7 +224,7 @@ public sealed class ReportService(
 
         var rows = await db.Transactions
             .AsNoTracking()
-            .Where(t => t.CreatedByUserId == userId && t.InstallmentPlanId != null
+            .Where(t => t.CreatedByUserId == userId && t.GroupId == null && t.InstallmentPlanId != null
                         && t.Status != TransactionStatus.Canceled && t.PaidAmount < t.Amount)
             .Select(t => new { Effective = t.DueDate ?? t.TransactionDate, Remaining = t.Amount - t.PaidAmount })
             .Where(x => x.Effective < windowEnd)
@@ -287,7 +287,7 @@ public sealed class ReportService(
         var derived = await db.LoadDerivedAsync(activeRules, today, cancellationToken).ConfigureAwait(false);
 
         var upcoming = await db.Transactions.AsNoTracking()
-            .Where(t => t.CreatedByUserId == userId && t.RecurrenceRuleId != null && t.Status != TransactionStatus.Canceled
+            .Where(t => t.CreatedByUserId == userId && t.GroupId == null && t.RecurrenceRuleId != null && t.Status != TransactionStatus.Canceled
                         && t.TransactionDate > today && t.TransactionDate <= limit)
             .GroupBy(t => new { RuleId = t.RecurrenceRuleId!.Value, t.TransactionDate.Year, t.TransactionDate.Month, t.Type })
             .Select(g => new { g.Key.RuleId, g.Key.Year, g.Key.Month, g.Key.Type, Total = g.Sum(t => t.Amount) })
@@ -322,7 +322,7 @@ public sealed class ReportService(
     // ------------------------------------------------------------------ auxiliares
 
     private IQueryable<Transaction> NonCanceled(Guid userId) =>
-        db.Transactions.AsNoTracking().Where(t => t.CreatedByUserId == userId && t.Status != TransactionStatus.Canceled);
+        db.Transactions.AsNoTracking().Where(t => t.CreatedByUserId == userId && t.GroupId == null && t.Status != TransactionStatus.Canceled);
 
     private IQueryable<Transaction> PeriodQuery(Guid userId, DateOnly from, DateOnly to) =>
         NonCanceled(userId).Where(t => t.TransactionDate >= from && t.TransactionDate <= to);

@@ -26,6 +26,9 @@ public sealed partial class GlobalExceptionHandler(IHostEnvironment environment,
         {
             ValidationException ve => ProblemDetailsBuilder.Create(httpContext, ve.StatusCode, ve.Code, ve.Title, ve.Detail, ve.Errors),
             AppException ae => ProblemDetailsBuilder.Create(httpContext, ae.StatusCode, ae.Code, ae.Title, ae.Detail),
+            // Papel/autoria insuficiente num contexto do qual o usuário participa (D-030/D-032) → 403 (o "não participante" é 404).
+            PermissionDeniedException pd => ProblemDetailsBuilder.Create(
+                httpContext, StatusCodes.Status403Forbidden, ErrorCodes.Forbidden, "Acesso negado.", pd.Message),
             DomainException de => ProblemDetailsBuilder.Create(
                 httpContext, StatusCodes.Status422UnprocessableEntity, ErrorCodes.BusinessRuleViolation, "Regra de negócio violada.", de.Message),
             ConcurrencyConflictException => ProblemDetailsBuilder.Create(

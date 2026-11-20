@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRoute, useRouter } from 'vue-router'
 import type { NavItem } from '@/layouts/navigation'
 
 withDefaults(
@@ -11,6 +12,16 @@ withDefaults(
 )
 
 const emit = defineEmits<{ navigate: [] }>()
+
+const route = useRoute()
+const router = useRouter()
+
+/** Ativo na rota do item ou em qualquer subrota (ex.: /groups/:id mantém "Grupos" ativo). */
+function isActive(routeName: string): boolean {
+  const target = router.resolve({ name: routeName }).path
+  const current = route.path
+  return target === '/' ? current === '/' : current === target || current.startsWith(`${target}/`)
+}
 </script>
 
 <template>
@@ -20,7 +31,7 @@ const emit = defineEmits<{ navigate: [] }>()
         v-tooltip.right="compact ? item.label : undefined"
         :to="{ name: item.routeName }"
         class="app-nav__link"
-        active-class="app-nav__link--active"
+        :class="{ 'app-nav__link--active': isActive(item.routeName) }"
         @click="emit('navigate')"
       >
         <i :class="item.icon" class="app-nav__icon" aria-hidden="true" />

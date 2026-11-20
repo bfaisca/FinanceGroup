@@ -7,3 +7,8 @@ export function safeRedirect(value: unknown, fallback = '/'): string {
   if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.startsWith('/\\')) return fallback
   return candidate
 }
+
+/** O destino de retorno é a página de aceite de um convite de grupo (`/invitations/:token`)? */
+export function isInvitationRedirect(value: unknown): boolean {
+  return safeRedirect(value, '').startsWith('/invitations/')
+}

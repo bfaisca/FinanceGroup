@@ -2,6 +2,7 @@ using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Auth;
 using FinanceApp.Domain.Categories;
 using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Installments;
 using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
@@ -40,6 +41,12 @@ public interface IAppDbContext
     DbSet<InstallmentPlan> InstallmentPlans { get; }
 
     DbSet<RecurrenceRule> RecurrenceRules { get; }
+
+    DbSet<Group> Groups { get; }
+
+    DbSet<GroupMember> GroupMembers { get; }
+
+    DbSet<GroupInvitation> GroupInvitations { get; }
 
     /// <summary>Rastreador de alterações (usado para descartar entidades pendentes após uma disputa de unicidade).</summary>
     ChangeTracker ChangeTracker { get; }

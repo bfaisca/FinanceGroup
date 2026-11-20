@@ -102,7 +102,7 @@ public sealed class InstallmentPlanService(
 
         var cancelable = await db.Transactions
             .AsTracking()
-            .Where(t => t.InstallmentPlanId == id && t.CreatedByUserId == userId && t.Status != TransactionStatus.Canceled && t.PaidAmount == 0)
+            .Where(t => t.InstallmentPlanId == id && t.CreatedByUserId == userId && t.GroupId == null && t.Status != TransactionStatus.Canceled && t.PaidAmount == 0)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -125,7 +125,7 @@ public sealed class InstallmentPlanService(
             ?? throw PlanNotFound();
 
         var installments = await db.Transactions.AsTracking()
-            .Where(t => t.InstallmentPlanId == id && t.CreatedByUserId == userId)
+            .Where(t => t.InstallmentPlanId == id && t.CreatedByUserId == userId && t.GroupId == null)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -155,7 +155,7 @@ public sealed class InstallmentPlanService(
             ?? throw PlanNotFound();
 
         var installments = await db.Transactions.AsNoTracking()
-            .Where(t => t.InstallmentPlanId == id && t.CreatedByUserId == userId)
+            .Where(t => t.InstallmentPlanId == id && t.CreatedByUserId == userId && t.GroupId == null)
             .OrderBy(t => t.InstallmentNumber)
             .ToRows()
             .ToListAsync(cancellationToken)

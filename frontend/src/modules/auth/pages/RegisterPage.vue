@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import RegisterForm from '../components/RegisterForm.vue'
 import { useAuthStore } from '@/stores/auth'
 import { toAppError } from '@/utils/problem'
-import { safeRedirect } from '@/utils/redirect'
+import { isInvitationRedirect, safeRedirect } from '@/utils/redirect'
 import type { RegisterRequest } from '@/types/api'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+
+const fromInvitation = computed(() => isInvitationRedirect(route.query.redirect))
 
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -46,9 +49,18 @@ async function onSubmit(request: RegisterRequest): Promise<void> {
       <p>Comece a organizar suas finanças pessoais.</p>
     </header>
 
+    <Message v-if="fromInvitation" severity="info" class="auth-page__notice" data-testid="invitation-notice">
+      Você recebeu um convite para um grupo. Crie sua conta com o e-mail do convite para aceitá-lo.
+    </Message>
+
     <RegisterForm :loading="loading" :error-message="errorMessage" :field-errors="fieldErrors" @submit="onSubmit" />
 
-    <p class="auth-page__alt">Já tem conta? <RouterLink :to="{ name: 'login' }">Entrar</RouterLink></p>
+    <p class="auth-page__alt">
+      Já tem conta?
+      <RouterLink :to="{ name: 'login', query: route.query.redirect ? { redirect: route.query.redirect } : {} }"
+        >Entrar</RouterLink
+      >
+    </p>
   </div>
 </template>
 

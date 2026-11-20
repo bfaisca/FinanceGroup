@@ -84,7 +84,9 @@ describe('ReportsPage', () => {
     ])
     expect(wrapper.find('[data-testid="summary-report"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="summary-table"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Relatórios de grupos chegam com a etapa de Grupos.')
+    expect(wrapper.text()).toContain(
+      'Estes relatórios são individuais. A visão consolidada de cada grupo fica no dashboard do grupo (menu Grupos).',
+    )
     wrapper.unmount()
   })
 

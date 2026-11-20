@@ -4,6 +4,7 @@ using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Auth;
 using FinanceApp.Domain.Categories;
 using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Installments;
 using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
@@ -39,6 +40,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<RecurrenceRule> RecurrenceRules => Set<RecurrenceRule>();
 
+    public DbSet<Group> Groups => Set<Group>();
+
+    public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
+
+    public DbSet<GroupInvitation> GroupInvitations => Set<GroupInvitation>();
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         try
@@ -53,6 +60,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             throw new UniqueConstraintViolationException(pg.ConstraintName, ex);
         }
+        catch (Exception ex) when (IsDeadlock(ex))
+        {
+            // Deadlock entre gravações concorrentes (ex.: duas gerações da mesma recorrência): é conflito de concorrência, não erro interno.
+            throw new ConcurrencyConflictException(ex);
+        }
+    }
+
+    private static bool IsDeadlock(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

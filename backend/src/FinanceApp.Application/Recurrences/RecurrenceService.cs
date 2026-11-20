@@ -183,7 +183,7 @@ public sealed class RecurrenceService(
         var today = clock.Today;
         return await db.Transactions
             .AsTracking()
-            .Where(t => t.RecurrenceRuleId == ruleId
+            .Where(t => t.RecurrenceRuleId == ruleId && t.GroupId == null
                         && t.TransactionDate > today
                         && (t.Status == TransactionStatus.Planned || t.Status == TransactionStatus.Pending)
                         && t.PaidAmount == 0

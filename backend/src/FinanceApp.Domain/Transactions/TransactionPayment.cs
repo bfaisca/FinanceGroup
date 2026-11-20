@@ -27,6 +27,13 @@ public sealed class TransactionPayment
 
     public Account? Account { get; private set; }
 
+    /// <summary>Desvincula a conta do pagador (exclusão da conta do usuário, D-036): o pagamento de grupo permanece, sem conta.</summary>
+    public void DetachAccount()
+    {
+        AccountId = null;
+        Account = null;
+    }
+
     internal static TransactionPayment Create(
         Guid transactionId,
         decimal amount,

@@ -1,4 +1,3 @@
-using System.Linq.Expressions;
 using FinanceApp.Application.Common;
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Exceptions;
@@ -36,7 +35,7 @@ public sealed class TransactionService(
         var filtered = ApplyFilters(OwnQuery(userId), query, today);
         var total = await filtered.CountAsync(cancellationToken).ConfigureAwait(false);
 
-        var rows = await ApplySort(filtered, query.Sort)
+        var rows = await filtered.ApplyContractSort(query.Sort)
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
             .ToRows()
@@ -160,7 +159,7 @@ public sealed class TransactionService(
     public async Task<IReadOnlyList<TransactionHistoryEntryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken)
     {
         var userId = currentUser.RequireUserId();
-        var exists = await db.Transactions.AnyAsync(t => t.Id == id && t.CreatedByUserId == userId, cancellationToken).ConfigureAwait(false);
+        var exists = await db.Transactions.AnyAsync(t => t.Id == id && t.CreatedByUserId == userId && t.GroupId == null, cancellationToken).ConfigureAwait(false);
         if (!exists)
         {
             throw TransactionNotFound();
@@ -207,7 +206,7 @@ public sealed class TransactionService(
     // ------------------------------------------------------------------ consultas
 
     private IQueryable<Transaction> OwnQuery(Guid userId) =>
-        db.Transactions.AsNoTracking().Where(t => t.CreatedByUserId == userId);
+        db.Transactions.AsNoTracking().Where(t => t.CreatedByUserId == userId && t.GroupId == null);
 
     private async Task<TransactionDetailDto> GetDetailAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -259,8 +258,7 @@ public sealed class TransactionService(
 
         if (filter.CategoryId is { } categoryId)
         {
-            // Inclui subcategorias da categoria informada.
-            query = query.Where(t => t.CategoryId == categoryId || t.Category!.ParentCategoryId == categoryId);
+            query = query.WhereCategoryOrChildren(categoryId);
         }
 
         if (filter.AccountId is { } accountId)
@@ -286,54 +284,16 @@ public sealed class TransactionService(
 
         if (filter.Status is { } status)
         {
-            query = status switch
-            {
-                // Overdue é calculado: persistido Planned/Pending (restante > 0) com vencimento anterior a hoje.
-                TransactionStatus.Overdue => query.Where(t =>
-                    (t.Status == TransactionStatus.Planned || t.Status == TransactionStatus.Pending)
-                    && t.DueDate != null && t.DueDate < today),
-                TransactionStatus.Planned or TransactionStatus.Pending => query.Where(t =>
-                    t.Status == status && !(t.DueDate != null && t.DueDate < today)),
-                _ => query.Where(t => t.Status == status),
-            };
+            query = query.WherePresentedStatus(status, today);
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
-            var term = filter.Search.Trim().ToLowerInvariant();
-#pragma warning disable CA1862, CA1304, CA1311 // Traduzido para SQL (lower/strpos): o provedor só traduz ToLower() e não StringComparison.
-            query = query.Where(t => t.Description.ToLower().Contains(term));
-#pragma warning restore CA1311, CA1304, CA1862
+            query = query.WhereDescriptionContains(filter.Search);
         }
 
         return query;
     }
-
-    private static IQueryable<Transaction> ApplySort(IQueryable<Transaction> query, string? sort)
-    {
-        var spec = string.IsNullOrWhiteSpace(sort) ? TransactionListQuery.DefaultSort : sort.Trim();
-        var descending = spec.StartsWith('-');
-        var field = spec.TrimStart('-').ToLowerInvariant();
-
-        var ordered = field switch
-        {
-            "transactiondate" => Order(query, t => t.TransactionDate, descending),
-            "duedate" => Order(query, t => t.DueDate, descending),
-            "amount" => Order(query, t => t.Amount, descending),
-            "description" => Order(query, t => t.Description, descending),
-            "createdat" => Order(query, t => t.CreatedAt, descending),
-            _ => Order(query, t => t.TransactionDate, descending: true),
-        };
-
-        // Desempate determinístico para paginação estável.
-        return ordered.ThenByDescending(t => t.CreatedAt).ThenBy(t => t.Id);
-    }
-
-    private static IOrderedQueryable<Transaction> Order<TKey>(
-        IQueryable<Transaction> query,
-        Expression<Func<Transaction, TKey>> key,
-        bool descending) =>
-        descending ? query.OrderByDescending(key) : query.OrderBy(key);
 
     // ------------------------------------------------------------------ referências do usuário
 
@@ -355,7 +315,7 @@ public sealed class TransactionService(
             query = query.Include(t => t.Category).Include(t => t.Account).Include(t => t.CreditCard);
         }
 
-        return await query.FirstOrDefaultAsync(t => t.Id == id && t.CreatedByUserId == userId, cancellationToken).ConfigureAwait(false)
+        return await query.FirstOrDefaultAsync(t => t.Id == id && t.CreatedByUserId == userId && t.GroupId == null, cancellationToken).ConfigureAwait(false)
             ?? throw TransactionNotFound();
     }
 

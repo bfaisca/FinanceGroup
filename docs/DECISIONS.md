@@ -185,3 +185,16 @@ Membros aparecem com `userId`, `name`, papel, status e datas — **sem e-mail**.
 
 ## D-036 — Exclusão de conta com grupos — Aceita (estende D-014/D-029)
 Além de D-014: memberships ativas passam a `Left`; convites pendentes enviados pelo usuário são revogados. Se o usuário era **Owner** de um grupo com outros membros ativos, a propriedade passa ao Admin ativo mais antigo (senão ao Member ativo mais antigo); se não restar nenhum membro ativo, o grupo é arquivado. Movimentações e pagamentos de grupo do usuário permanecem, com autor "Usuário removido" e `accountId` de pagamentos desvinculado.
+
+## D-037 — Grupo arquivado é somente leitura — Proposta
+Em grupo arquivado só é possível ler, **reativar** (`unarchive`) e **sair** (`leave`). Convidar, editar o grupo, alterar papéis, remover membros, criar/editar/cancelar/excluir movimentações e registrar/remover pagamentos retornam `422 business_rule_violation`. Aceitar um convite para grupo arquivado também retorna 422. Motivo: comportamento mais conservador (preserva o histórico congelado); alternativa seria permitir pagamentos em aberto.
+
+## D-038 — Categorias preservadas na exclusão de conta — Proposta
+Categorias personalizadas do usuário que ainda são usadas por movimentações de grupo (e suas categorias-pai) não são apagadas em `DELETE /users/me`: são **desativadas**, para não quebrar a FK nem o histórico do grupo. As demais categorias individuais continuam sendo removidas (D-014).
+
+## D-039 — Pagamentos de movimentação cancelada no saldo projetado — Proposta
+Pagamentos de grupo vinculados a uma movimentação `Canceled` não entram no saldo projetado da conta do pagador (coerente com STATE_MACHINE: cancelada não afeta saldos). Reabrir a movimentação os traz de volta ao cálculo.
+
+## D-040 — Sair de grupo arquivado e reativação — Proposta
+O membro (inclusive Admin) pode sair de um grupo arquivado; o Owner não pode sair (precisa transferir/excluir conta). Quem retorna por novo convite reaproveita a mesma linha de `group_members` com papel `Member`, recuperando a edição das próprias movimentações antigas (autoria é por `created_by_user_id`).
+
