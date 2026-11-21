@@ -594,34 +594,43 @@ interface InvitationPreviewDto {                               // GET /invitatio
 
 O link enviado por e-mail aponta para a **rota do frontend** `/invitations/:token`.
 
-### 16.2 Movimentações do grupo — `/groups/{id}/transactions`
+### 16.2 Movimentações do grupo — `/groups/{id}/transactions` (somente **despesas**, D-046)
 
 ```ts
 interface GroupUserRefDto { userId: string; name: string; }   // "Usuário removido" quando anonimizado
 
 interface GroupTransactionDto {
   id: string; groupId: string;
-  description: string; type: TransactionType; amount: number;
-  paidAmount: number; remainingAmount: number;
+  description: string;
+  type: 'Expense';                                              // grupos só têm despesas (D-046)
+  amount: number;                                               // valor ORIGINAL da conta (editável por ocorrência)
+  paidAmount: number;                                           // principal já coberto (Σ payments.amount) — só ele conta para a situação
+  interestPaid: number;                                         // Σ juros/multa pagos (D-048)
+  totalPaid: number;                                            // paidAmount + interestPaid = efetivamente pago
+  remainingAmount: number;                                      // amount − paidAmount
   status: TransactionStatus;                                    // apresentado (inclui 'Overdue')
   categoryId: string; categoryName: string; parentCategoryName: string | null;
   categoryColor: string | null; categoryIcon: string | null;
   paymentMethod: PaymentMethod | null;
   transactionDate: string; dueDate: string | null; paidAt: string | null;
   notes: string | null;
+  series: { id: string; number: number; total: number } | null; // recorrência do grupo (D-049)
   createdBy: GroupUserRefDto;
   createdAt: string; updatedAt: string;
   permissions: { canEdit: boolean; canCancel: boolean; canDelete: boolean; canPay: boolean };
 }
 interface GroupTransactionPaymentDto {
-  id: string; amount: number; paymentDate: string;
+  id: string; amount: number;                                   // principal aplicado à conta
+  interestAmount: number;                                       // juros/multa (≥ 0)
+  totalAmount: number;                                          // amount + interestAmount
+  paymentDate: string;
   paymentMethod: PaymentMethod | null;
-  paidBy: GroupUserRefDto; createdAt: string;
-  canRemove: boolean;                  // só o próprio pagador, e com o grupo ativo
+  paidBy: GroupUserRefDto; createdAt: string; updatedAt: string;
+  canEdit: boolean; canRemove: boolean;                         // só o próprio pagador, e com o grupo ativo e a conta não cancelada
 }
 interface GroupTransactionDetailDto extends GroupTransactionDto { payments: GroupTransactionPaymentDto[]; }
 interface GroupTransactionHistoryEntryDto {
-  id: string; action: 'Created' | 'Updated' | 'PaymentAdded' | 'PaymentRemoved' | 'Canceled' | 'Reopened';
+  id: string; action: 'Created' | 'Updated' | 'PaymentAdded' | 'PaymentUpdated' | 'PaymentRemoved' | 'Canceled' | 'Reopened';
   field: string | null; oldValue: string | null; newValue: string | null;
   actorName: string; createdAt: string;
 }
@@ -629,50 +638,69 @@ interface GroupTransactionHistoryEntryDto {
 
 | Método e rota | Corpo / query | Resposta |
 |---|---|---|
-| `GET /groups/{id}/transactions` | `page`, `pageSize`, `sort` (`transactionDate`\|`dueDate`\|`amount`\|`description`\|`createdAt`; padrão `-transactionDate`), `from`, `to`, `type`, `categoryId` (inclui subcategorias), `status`, `search`, `createdByUserId`, `paidByUserId` (tem ao menos um pagamento dele) | `200 PagedResult<GroupTransactionDto>` |
-| `POST /groups/{id}/transactions` | `CreateGroupTransactionRequest` | `201 GroupTransactionDetailDto` |
+| `GET /groups/{id}/transactions` | `page`, `pageSize`, `sort` (`transactionDate`\|`dueDate`\|`amount`\|`description`\|`createdAt`; padrão `-transactionDate`), `from`, `to`, `categoryId` (inclui subcategorias), `status`, `search`, `createdByUserId`, `paidByUserId` (tem ao menos um pagamento dele) | `200 PagedResult<GroupTransactionDto>` (sem filtro `type`; linhas legadas de receita não aparecem) |
+| `POST /groups/{id}/transactions` | `CreateGroupTransactionRequest` | `201 GroupTransactionDetailDto` da **primeira** ocorrência (com `recurrence`, as demais são criadas junto) |
 | `GET /groups/{id}/transactions/{txId}` | — | `200 GroupTransactionDetailDto` |
 | `PUT /groups/{id}/transactions/{txId}` | `UpdateGroupTransactionRequest` (só criador) | `200 GroupTransactionDetailDto` |
 | `DELETE /groups/{id}/transactions/{txId}` | — (só criador, sem pagamentos) | `204` |
 | `POST .../{txId}/cancel` · `/reopen` | — (só criador) | `200 GroupTransactionDetailDto` |
 | `GET .../{txId}/history` | — | `200 GroupTransactionHistoryEntryDto[]` |
-| `POST .../{txId}/payments` | `{ amount, paymentDate, accountId?, paymentMethod? }` | `201 GroupTransactionDetailDto` (`accountId` = conta do próprio pagador; **nunca devolvido**) |
+| `POST .../{txId}/payments` | `GroupPaymentRequest` | `201 GroupTransactionDetailDto` |
+| `PUT .../{txId}/payments/{paymentId}` | `GroupPaymentRequest` (só o pagador) | `200 GroupTransactionDetailDto` |
 | `DELETE .../{txId}/payments/{paymentId}` | — (só o pagador) | `200 GroupTransactionDetailDto` |
 
 ```ts
-interface CreateGroupTransactionRequest {
-  description: string; type: TransactionType; amount: number; categoryId: string;
-  paymentMethod?: PaymentMethod | null; status?: 'Planned' | 'Pending';
-  transactionDate: string; dueDate?: string | null; notes?: string | null;
+interface GroupPaymentRequest {
+  amount: number;                 // principal aplicado (> 0); Σ amount de todos os pagamentos ≤ valor da conta
+  interestAmount?: number;        // juros/multa (≥ 0, padrão 0), 2 casas; NÃO entra na regra "≤ valor da conta"
+  paymentDate: string;            // YYYY-MM-DD, ≤ hoje; pode ser qualquer data passada
+  accountId?: string | null;      // conta do próprio pagador (privada; nunca devolvida)
+  paymentMethod?: PaymentMethod | null;
 }
-// Update: mesmos campos, exceto `type` (imutável). Validações iguais às do §8 (exceto conta); categoria: padrão ou do criador, ativa, mesmo `type`.
+interface CreateGroupTransactionRequest {
+  description: string; amount: number; categoryId: string;      // sem `type` (sempre Expense) — enviar `type` é ignorado/rejeitado (422 se 'Income')
+  paymentMethod?: PaymentMethod | null; status?: 'Planned' | 'Pending';
+  transactionDate: string;
+  dueDate?: string | null;        // qualquer data (inclusive anterior a hoje); regra com transactionDate: ver abaixo
+  notes?: string | null;
+  payment?: GroupPaymentRequest | null;          // "já paga": cria a conta e o 1º pagamento do criador na mesma transação (D-047); `amount` do pagamento padrão = valor da conta
+  recurrence?: { frequency: 'Weekly' | 'Biweekly' | 'Monthly' | 'Bimonthly' | 'Quarterly' | 'Semiannual' | 'Annual'; occurrences: number /* 2–60 */ } | null;   // D-049
+}
+// Update: description, amount, categoryId, paymentMethod, status, transactionDate, dueDate, notes (edita só ESTA ocorrência).
 ```
-Violações do §8 (pagar acima do restante, cancelada, excluir com pagamentos etc.) → `422`; grupo arquivado → `422`; tentar editar/cancelar/excluir movimentação alheia → `403`; `GET`/mutação de movimentação de outro grupo → `404`.
+- **Vencimento:** `dueDate` pode ser anterior a hoje e, se informado, não precisa respeitar nenhuma data mínima; regra mantida do §8 apenas se existir (`dueDate` ≥ `transactionDate`) — se o §8 hoje exige isso, **relaxar para grupos**: o vencimento é livre (D-047).
+- Com `payment`, o pagamento cobre o valor integral (ou `payment.amount` se informado e ≤ valor) e a conta nasce `Paid` (ou `Pending` se parcial); com `recurrence` + `payment`, o pagamento vale só para a **1ª ocorrência**.
+- Violações do §8 (pagar acima do restante, cancelada, excluir com pagamentos etc.) → `422`; grupo arquivado → `422`; editar/cancelar/excluir movimentação alheia → `403`; movimentação de outro grupo → `404`.
+- Receita (`type: 'Income'`) ou qualquer movimentação de grupo legada do tipo receita: não pode ser criada (`422`), não aparece em listagens, dashboard nem notificações.
 
 ### 16.3 Dashboard do grupo — `GET /groups/{id}/dashboard`
 
-Query: `from`, `to` (obrigatórios, `from ≤ to`, ≤ 366 dias), `months` (1–36, padrão 6), `endMonth` (`YYYY-MM`, padrão mês de `to`). Regras: D-034.
+Query: `from`, `to` (obrigatórios, `from ≤ to`, ≤ 366 dias), `months` (1–36, padrão 6), `endMonth` (`YYYY-MM`, padrão mês de `to`). Regras: D-034 (emendada por D-046/D-048). Apenas despesas **não canceladas** com `transactionDate` no período.
 
 ```ts
-interface GroupParticipationItemDto {
+interface GroupPaidByItemDto {
   userId: string; name: string; status: GroupMemberStatus;
-  expenseAmount: number; expensePercent: number;   // 0–100, 2 casas
-  incomeAmount: number; incomePercent: number;
+  paidAmount: number;          // Σ (amount + interestAmount) dos pagamentos dessa pessoa
+  interestAmount: number;      // parte de juros/multa dentro de paidAmount
+  percent: number;             // 0–100, 2 casas, sobre totals.expensesPaid
 }
 interface GroupDashboardDto {
   period: { from: string; to: string };
-  totals: { expenses: number; expensesPaid: number; expensesPending: number;
-            income: number; incomeReceived: number; incomePending: number; balance: number /* income - expenses */ };
-  createdBy: GroupParticipationItemDto[];   // por quem CADASTROU (soma dos valores)
-  paidBy: GroupParticipationItemDto[];      // por quem PAGOU/RECEBEU (soma dos pagamentos)
+  totals: {
+    expenses: number;          // Σ valores originais
+    expensesPaidPrincipal: number;   // Σ principal pago (conta cobertura)
+    interestPaid: number;      // Σ juros/multa
+    expensesPaid: number;      // expensesPaidPrincipal + interestPaid (efetivamente pago)
+    expensesPending: number;   // expenses − expensesPaidPrincipal (só principal; nunca negativo)
+  };
+  paidBy: GroupPaidByItemDto[];            // "Contas Pagas": quem pagou (ordenado por paidAmount desc, depois nome; só quem pagou algo)
   expensesByCategory: { categoryId: string; name: string; color: string | null; amount: number; percent: number;
                         children: { categoryId: string; name: string; amount: number; percent: number }[] }[];
-  monthly: { month: string /* YYYY-MM */; income: number; expenses: number }[];
-  previousPeriod: { from: string; to: string; expenses: number; income: number;
-                    expensesChangePercent: number | null; incomeChangePercent: number | null };  // null se base 0
+  monthly: { month: string /* YYYY-MM */; expenses: number; paid: number }[];   // por mês de transactionDate; paid = efetivamente pago das contas do mês
+  previousPeriod: { from: string; to: string; expenses: number; expensesChangePercent: number | null };  // null se base 0
 }
 ```
-`createdBy`/`paidBy` ordenados por maior valor total (despesa + receita) e depois por nome; incluem apenas quem tem valor no período.
+O dashboard **não** tem mais `createdBy` (participação por quem cadastrou), receitas nem saldo. O gráfico "Pago × Pendente" usa `totals.expensesPaid` e `totals.expensesPending`.
 
 ## 17. Notificações — `/api/v1/notifications` (Bearer) — Etapa 4b
 
@@ -688,8 +716,9 @@ interface NotificationDto {
   actor: { userId: string; name: string } | null;       // "Usuário removido" se a conta foi excluída
   transaction: {                                         // null em convites
     id: string; description: string;
-    type: 'Income' | 'Expense';                          // tipo da movimentação
-    amount: number;                                      // GroupTransactionCreated: valor da movimentação; GroupPaymentRegistered: valor do pagamento
+    type: 'Expense';                                     // grupos só têm despesas
+    amount: number;                                      // GroupTransactionCreated: valor da movimentação (de cada ocorrência); GroupPaymentRegistered: valor TOTAL do pagamento (principal + juros)
+    seriesOccurrences: number | null;                    // GroupTransactionCreated de uma recorrência: total de ocorrências criadas (uma única notificação por série)
   } | null;
   invitation: {                                          // somente em GroupInvitationReceived
     id: string;
@@ -726,4 +755,4 @@ Navegação sugerida (frontend): movimentação → `/groups/{groupId}?tab=trans
 | 2026-11-20 | 1.3.1 | Esclarecimentos da implementação da Etapa 4 (**sem alterar rotas, DTOs ou códigos**): (1) `permissions.canCancel` da movimentação de grupo também habilita `reopen`; `payments[].canRemove` só é `true` para o pagador, com grupo ativo e movimentação não cancelada; (2) grupo arquivado é somente leitura exceto `unarchive` e `leave` (demais mutações e aceitar convite → `422 business_rule_violation`, D-037); (3) `GroupInvitationDto.emailSent` só vem em `POST` de convite e `resend` (omitido nas listagens); (4) `GET /invitations/{token}`, `accept` e `decline` exigem autenticação e usam a política de rate limit `Auth`; aceitar com e-mail de outra conta → `403`; token inexistente/substituído → `404`; (5) em `expensesByCategory[].children[].percent` o percentual é sobre o total da categoria-raiz (como em `GET /reports/by-category`), não sobre o total de despesas do grupo; (6) alterar o papel para o mesmo papel atual é idempotente (`200`); (7) `memberId` que não é de membro ativo do grupo → `404`; (8) `DELETE /users/me`: categorias personalizadas usadas por movimentações de grupo são desativadas em vez de apagadas (D-038); (9) `accountId` enviado em movimentação de grupo é ignorado e nunca persistido; conta de outro usuário em pagamento de grupo → `400`/`404` | Backend |
 | 2026-11-21 | 1.4 | Etapa 4b: notificações dentro do app (seção 17, aditiva); decisões D-041 a D-044 | Coordenação (backend implementa) |
 | 2026-11-21 | 1.4.1 | Esclarecimentos da implementação da Etapa 4b (**sem alterar rotas, DTOs ou códigos**; D-045): (1) `pageSize` fora de 1–50 e `page` < 1 em `GET /notifications` → `400 validation_error`; (2) notificações de convite sempre aparecem para o destinatário (mesmo sem ser membro), as de movimentação/pagamento somem da lista e do contador quando ele deixa de ser membro ativo; `POST /notifications/{id}/read` de uma notificação oculta (ou de outro usuário, ou inexistente) → `404`; (3) `accept-invitation`/`decline-invitation` de notificação que não é de convite → `404`; e-mail da conta diferente do convite → `403`; convite expirado/revogado/já usado/já membro (e grupo arquivado, no aceite) → `422`; (4) `canRespond` não considera o grupo arquivado; (5) o reenvio do convite reaproveita a notificação (volta a não lida, `createdAt` atualizado, sem duplicar); (6) aceitar/recusar também pelo token do e-mail marca a notificação do convite como lida; (7) `actor` é `null` apenas se a conta do ator deixou de existir; conta anonimizada → `"Usuário removido"`; `group.name` sempre preenchido; (8) a migration `Etapa4b_Notifications` cria a tabela `notifications`; retenção de 90 dias das lidas roda no serviço de background | Backend |
-
+| 2026-11-21 | 1.5 | Grupos só com despesas; dashboard sem `createdBy`/receita e com pago × pendente; lançar já paga; vencimento livre; juros/multa no pagamento + edição do próprio pagamento; recorrência (N ocorrências) no grupo; `seriesOccurrences` em notificações. **Breaking** em §16.2/§16.3. D-046 a D-050 | Coordenação |

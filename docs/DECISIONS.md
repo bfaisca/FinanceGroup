@@ -237,3 +237,26 @@ Escolhas conservadoras para o que D-041 a D-044 não detalham (sem alterar rotas
 - **Exclusão de movimentação de grupo** (só sem pagamentos) remove, por cascata, as notificações dela. Notificações em que o usuário excluído é o **ator** permanecem (histórico do grupo) e exibem "Usuário removido".
 - **Retenção:** `NotificationRetention.PurgeReadAsync` roda a cada execução do serviço de background existente (`RecurrenceGenerationHostedService`, mesmo intervalo e mesmo `Recurrence__BackgroundEnabled`); falha nela é apenas registrada. Notificações não lidas nunca expiram por tempo.
 
+
+---
+
+# Etapa 4c — Ajustes de grupos pedidos pelo usuário (2026-11-21)
+
+## D-046 — Grupos só têm despesas — Aceita
+Receitas não existem em grupos: não se cria (`422`), não aparece em listagens, dashboard nem notificações; some o filtro de tipo e a variante "recebeu". Linhas de receita de grupo já gravadas (dados de teste) **não são apagadas** (preservar dados): ficam ocultas por filtro `Type = Expense` em todas as consultas de grupo. Emenda D-032/D-034/D-042.
+
+## D-047 — Lançar já paga e vencimento livre — Aceita
+`CreateGroupTransactionRequest.payment` cria a conta e o primeiro pagamento do criador na mesma transação (data de pagamento ≤ hoje, qualquer data passada; conta privada opcional). O vencimento (`dueDate`) é livre, inclusive no passado e sem relação mínima com a data da movimentação, **apenas para movimentações de grupo**. Criar já paga gera as duas notificações (criação e pagamento).
+
+## D-048 — Juros/multa no pagamento (valor original × efetivamente pago) — Aceita
+- A conta mantém o **valor original** (`amount`). Cada pagamento tem `amount` (principal; Σ ≤ valor da conta, define a situação Pendente/Paga) e `interestAmount` (juros/multa ≥ 0, fora dessa regra). Efetivamente pago = principal + juros.
+- O pagador pode **editar o próprio pagamento** (valor, juros, data, conta privada, método) enquanto a conta não estiver cancelada e o grupo ativo; histórico `PaymentUpdated`.
+- Dashboard: `expensesPaid` = principal pago + juros; `expensesPending` = original − principal pago; juros destacados à parte. "Contas Pagas" soma principal + juros por pessoa.
+- Saldo projetado individual (D-033): um pagamento de grupo com `accountId` subtrai principal + juros.
+- Notificação de pagamento mostra o valor total pago.
+
+## D-049 — Recorrência no grupo (N ocorrências geradas na hora) — Aceita (emenda D-032 ⚠)
+`recurrence {frequency, occurrences 2–60}`: cria todas as ocorrências de imediato, cada uma uma conta independente do grupo (mesmo valor, categoria, criador). Frequências: semanal, quinzenal, mensal, bimestral, trimestral, semestral, anual (sem diária nem personalizada). Datas: `transactionDate + (i−1)·passo`, com ajuste de fim de mês como D-026; o vencimento, se houver, mantém o mesmo deslocamento em dias da data da movimentação. Tabela `group_transaction_series`; cada ocorrência carrega `series {id, number, total}`. Depois de criada, cada ocorrência é editada/paga/cancelada/excluída isoladamente (para refletir juros em um mês). Ações em lote na série (cancelar restantes, editar todas) ficam **fora** desta versão. Uma única notificação de criação por série. Parcelamentos de grupo continuam fora do MVP.
+
+## D-050 — Atualizar manualmente — Técnica
+Botão "Atualizar" na tela do grupo recarrega dados da aba atual, o dashboard e o contador de notificações. Sem tempo real (D-044 mantida).
