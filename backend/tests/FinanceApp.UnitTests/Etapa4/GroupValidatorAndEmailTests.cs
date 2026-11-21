@@ -3,7 +3,9 @@ using FinanceApp.Application.Emails;
 using FinanceApp.Application.Groups;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Domain.Groups;
+using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
+using FinanceApp.UnitTests.Support;
 using MsOptions = Microsoft.Extensions.Options.Options;
 
 namespace FinanceApp.UnitTests.Etapa4;
@@ -49,32 +51,65 @@ public class GroupValidatorAndEmailTests
     public void Invitation_EmailFormat(string email, bool valid) =>
         Assert.Equal(valid, new CreateInvitationRequestValidator().Validate(new CreateInvitationRequest { Email = email }).IsValid);
 
-    private static CreateGroupTransactionRequest ValidCreate() => new()
+    private static CreateGroupTransactionRequest ValidCreate(GroupPaymentRequest? payment = null, GroupRecurrenceRequest? recurrence = null) => new()
     {
         Description = "Mercado",
-        Type = TransactionType.Expense,
         Amount = 10m,
         CategoryId = Guid.NewGuid(),
         TransactionDate = Today,
+        Payment = payment,
+        Recurrence = recurrence,
     };
 
     [Fact]
     public void GroupTransaction_ValidRequest_Passes() =>
-        Assert.True(new CreateGroupTransactionRequestValidator().Validate(ValidCreate()).IsValid);
+        Assert.True(new CreateGroupTransactionRequestValidator(new FakeClock(new DateTimeOffset(2026, 11, 18, 15, 0, 0, TimeSpan.Zero))).Validate(ValidCreate()).IsValid);
+
+    private static readonly FakeClock ClockOf = new(new DateTimeOffset(2026, 11, 18, 15, 0, 0, TimeSpan.Zero));
+
+    [Fact]
+    public void GroupPayment_Rules_AmountInterestAndDate()
+    {
+        var validator = new GroupPaymentRequestValidator(ClockOf);
+
+        Assert.True(validator.Validate(new GroupPaymentRequest { Amount = 10m, InterestAmount = 0m, PaymentDate = Today.AddDays(-90) }).IsValid);
+        Assert.True(validator.Validate(new GroupPaymentRequest { Amount = 10m, InterestAmount = 23.50m, PaymentDate = Today }).IsValid);
+        Assert.False(validator.Validate(new GroupPaymentRequest { InterestAmount = 1m, PaymentDate = Today }).IsValid); // amount obrigatório
+        Assert.False(validator.Validate(new GroupPaymentRequest { Amount = 0m, PaymentDate = Today }).IsValid);
+        Assert.False(validator.Validate(new GroupPaymentRequest { Amount = 10m, InterestAmount = -0.01m, PaymentDate = Today }).IsValid);
+        Assert.False(validator.Validate(new GroupPaymentRequest { Amount = 10m, InterestAmount = 1.234m, PaymentDate = Today }).IsValid);
+        Assert.False(validator.Validate(new GroupPaymentRequest { Amount = 10m, PaymentDate = Today.AddDays(1) }).IsValid);
+        Assert.False(validator.Validate(new GroupPaymentRequest { Amount = 10m }).IsValid);
+    }
+
+    [Fact]
+    public void GroupTransaction_NestedPaymentAmountIsOptional_AndRecurrenceRulesApply()
+    {
+        var validator = new CreateGroupTransactionRequestValidator(ClockOf);
+
+        Assert.True(validator.Validate(ValidCreate(payment: new GroupPaymentRequest { PaymentDate = Today })).IsValid);
+        Assert.False(validator.Validate(ValidCreate(payment: new GroupPaymentRequest { PaymentDate = Today.AddDays(1) })).IsValid);
+        Assert.True(validator.Validate(ValidCreate(recurrence: new GroupRecurrenceRequest { Frequency = RecurrenceFrequency.Annual, Occurrences = 60 })).IsValid);
+        Assert.False(validator.Validate(ValidCreate(recurrence: new GroupRecurrenceRequest { Frequency = RecurrenceFrequency.Daily, Occurrences = 3 })).IsValid);
+        Assert.False(validator.Validate(ValidCreate(recurrence: new GroupRecurrenceRequest { Frequency = RecurrenceFrequency.Custom, Occurrences = 3 })).IsValid);
+        Assert.False(validator.Validate(ValidCreate(recurrence: new GroupRecurrenceRequest { Frequency = RecurrenceFrequency.Monthly, Occurrences = 1 })).IsValid);
+        Assert.False(validator.Validate(ValidCreate(recurrence: new GroupRecurrenceRequest { Frequency = RecurrenceFrequency.Monthly, Occurrences = 61 })).IsValid);
+        Assert.False(validator.Validate(ValidCreate(recurrence: new GroupRecurrenceRequest { Occurrences = 3 })).IsValid);
+    }
 
     [Fact]
     public void GroupTransaction_RejectsInvalidFields()
     {
-        var validator = new CreateGroupTransactionRequestValidator();
+        var validator = new CreateGroupTransactionRequestValidator(new FakeClock(new DateTimeOffset(2026, 11, 18, 15, 0, 0, TimeSpan.Zero)));
 
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Type = TransactionType.Expense, Amount = 0m, CategoryId = Guid.NewGuid(), TransactionDate = Today }).IsValid);
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "", Type = TransactionType.Expense, Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = Today }).IsValid);
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Type = null, Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = Today }).IsValid);
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Type = TransactionType.Expense, Amount = 1.234m, CategoryId = Guid.NewGuid(), TransactionDate = Today }).IsValid);
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Type = TransactionType.Expense, Amount = 1m, CategoryId = Guid.Empty, TransactionDate = Today }).IsValid);
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Type = TransactionType.Expense, Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = null }).IsValid);
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Type = TransactionType.Expense, Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = Today, DueDate = Today.AddDays(-1) }).IsValid);
-        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Type = TransactionType.Expense, Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = Today, Status = TransactionStatus.Paid }).IsValid);
+        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Amount = 0m, CategoryId = Guid.NewGuid(), TransactionDate = Today }).IsValid);
+        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "", Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = Today }).IsValid);
+        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Amount = 1.234m, CategoryId = Guid.NewGuid(), TransactionDate = Today }).IsValid);
+        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Amount = 1m, CategoryId = Guid.Empty, TransactionDate = Today }).IsValid);
+        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = null }).IsValid);
+        // D-047: vencimento livre, inclusive anterior à data da movimentação.
+        Assert.True(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = Today, DueDate = Today.AddDays(-1) }).IsValid);
+        Assert.False(validator.Validate(new CreateGroupTransactionRequest { Description = "x", Amount = 1m, CategoryId = Guid.NewGuid(), TransactionDate = Today, Status = TransactionStatus.Paid }).IsValid);
     }
 
     [Fact]

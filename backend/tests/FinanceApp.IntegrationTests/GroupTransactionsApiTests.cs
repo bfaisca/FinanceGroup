@@ -89,7 +89,7 @@ public class GroupTransactionsApiTests(ApiFactory factory)
         var gid = group.Id;
         var tx = await h.CreateGroupTxAsync(ana, gid, "Internet", 120m);
         var category = await h.CategoryIdAsync(ana, "Alimentação");
-        var body = GroupSupport.GroupTxBody("Alterada", "Expense", 120m, category, h.Today);
+        var body = GroupSupport.GroupTxBody("Alterada", 120m, category, h.Today);
 
         foreach (var intruder in new[] { owner, bia })
         {
@@ -101,7 +101,7 @@ public class GroupTransactionsApiTests(ApiFactory factory)
             Assert.Equal((false, false, false, true), (view.Permissions.CanEdit, view.Permissions.CanCancel, view.Permissions.CanDelete, view.Permissions.CanPay));
         }
 
-        var edited = await ApiUser.Read<GroupTransactionDetailDto>(await ana.Put($"/api/v1/groups/{gid}/transactions/{tx.Id}", GroupSupport.GroupTxBody("Internet fibra", "Expense", 150m, category, h.Today, notes: "plano novo")));
+        var edited = await ApiUser.Read<GroupTransactionDetailDto>(await ana.Put($"/api/v1/groups/{gid}/transactions/{tx.Id}", GroupSupport.GroupTxBody("Internet fibra", 150m, category, h.Today, notes: "plano novo")));
         Assert.Equal(("Internet fibra", 150m, "plano novo"), (edited.Description, edited.Amount, edited.Notes));
         var history = await ana.GetOk<List<GroupTransactionHistoryEntryDto>>($"/api/v1/groups/{gid}/transactions/{tx.Id}/history");
         Assert.Contains(history, e => e.Action == TransactionAuditAction.Updated && e.ActorName == "Ana");
@@ -146,13 +146,13 @@ public class GroupTransactionsApiTests(ApiFactory factory)
         var income = await h.CategoryIdAsync(ana, "Salário", CategoryType.Income);
 
         // Categoria personalizada do próprio autor é aceita; a de outro usuário não existe para ele.
-        Assert.Equal(HttpStatusCode.Created, (await ana.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Com categoria própria", "Expense", 10m, mine, h.Today))).StatusCode);
-        var foreign = await owner.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Categoria alheia", "Expense", 10m, mine, h.Today));
+        Assert.Equal(HttpStatusCode.Created, (await ana.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Com categoria própria", 10m, mine, h.Today))).StatusCode);
+        var foreign = await owner.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Categoria alheia", 10m, mine, h.Today));
         Assert.True(foreign.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity or HttpStatusCode.BadRequest, $"Status {(int)foreign.StatusCode}");
-        await ReadProblemAsync(await ana.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Tipo errado", "Expense", 10m, income, h.Today)), HttpStatusCode.BadRequest, "validation_error");
+        await ReadProblemAsync(await ana.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Tipo errado", 10m, income, h.Today)), HttpStatusCode.BadRequest, "validation_error");
 
         var invalid = await ReadProblemAsync(
-            await ana.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody(" ", "Expense", 0m, shared, h.Today)), HttpStatusCode.BadRequest, "validation_error");
+            await ana.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody(" ", 0m, shared, h.Today)), HttpStatusCode.BadRequest, "validation_error");
         Assert.True(invalid.HasError("description"));
         Assert.True(invalid.HasError("amount"));
         // Conta/cartão não fazem parte do contrato do grupo: o campo é simplesmente ignorado e nunca persistido.
@@ -164,24 +164,23 @@ public class GroupTransactionsApiTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task List_FiltersByAuthorPayerStatusTypeAndText_WithPagination()
+    public async Task List_FiltersByAuthorPayerStatusAndText_WithPagination()
     {
         var (_, ana, bia, group) = await NewGroupAsync();
         var gid = group.Id;
         var t1 = await h.CreateGroupTxAsync(ana, gid, "Mercado", 100m, h.Today.AddDays(-2));
         var t2 = await h.CreateGroupTxAsync(bia, gid, "Padaria", 20m, h.Today.AddDays(-1));
-        var t3 = await h.CreateGroupTxAsync(ana, gid, "Reembolso", 50m, h.Today, "Income");
+        var t3 = await h.CreateGroupTxAsync(ana, gid, "Luz", 50m, h.Today);
         await h.PayGroupTxAsync(bia, gid, t1.Id, 100m, h.Today.AddDays(-2));
 
         async Task<List<string>> Names(string query) =>
             (await ana.GetOk<PagedResult<GroupTransactionDto>>($"/api/v1/groups/{gid}/transactions?{query}")).Items.Select(i => i.Description).ToList();
 
-        Assert.Equal(new[] { "Reembolso", "Padaria", "Mercado" }, await Names(string.Empty));
-        Assert.Equal(new[] { "Reembolso", "Mercado" }, await Names($"createdByUserId={ana.Id}"));
+        Assert.Equal(new[] { "Luz", "Padaria", "Mercado" }, await Names(string.Empty));
+        Assert.Equal(new[] { "Luz", "Mercado" }, await Names($"createdByUserId={ana.Id}"));
         Assert.Equal(new[] { "Mercado" }, await Names($"paidByUserId={bia.Id}"));
-        Assert.Equal(new[] { "Padaria" }, await Names("status=Pending&type=Expense"));
+        Assert.Equal(new[] { "Luz", "Padaria" }, await Names("status=Pending"));
         Assert.Equal(new[] { "Mercado" }, await Names("status=Paid"));
-        Assert.Equal(new[] { "Reembolso" }, await Names("type=Income"));
         Assert.Equal(new[] { "Padaria" }, await Names("search=padar"));
         var page = await ana.GetOk<PagedResult<GroupTransactionDto>>($"/api/v1/groups/{gid}/transactions?pageSize=2&page=2");
         Assert.Equal((1, 3, 2), (page.Items.Count, page.TotalCount, page.TotalPages));

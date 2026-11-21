@@ -59,6 +59,22 @@ describe('histórico em linguagem legível', () => {
       'algoNovo: de a para b',
     )
   })
+  it('descreve pagamento alterado (de/para), inclusive com juros/multa', () => {
+    const updated = entry({
+      action: 'PaymentUpdated',
+      field: 'payment',
+      oldValue: '500.00 (2026-11-10)',
+      newValue: '500.00 + 23.50 (2026-11-10)',
+    })
+    expect(describeHistoryEntry(updated)).toMatch(
+      /^Pagamento alterado: de R\$\s500,00 em 10\/11\/2026 para R\$\s500,00 \+ R\$\s23,50 de juros\/multa em 10\/11\/2026$/,
+    )
+    // Formato desconhecido: mostra o texto como veio.
+    expect(
+      describeHistoryEntry(entry({ action: 'PaymentUpdated', field: 'payment', oldValue: 'a', newValue: 'b' })),
+    ).toBe('Pagamento alterado: de a para b')
+  })
+
   it('descreve pagamentos registrados e removidos no formato do backend', () => {
     const added = entry({ action: 'PaymentAdded', field: 'payment', newValue: '200.00 (2026-11-18)' })
     const removed = entry({ action: 'PaymentRemoved', field: 'payment', oldValue: '1234.50 (2026-11-02)' })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NOTE_PT } from '../notice'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
@@ -14,6 +14,7 @@ import AppConfirmDialog from '@/components/AppConfirmDialog.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ToneChip from '@/components/ToneChip.vue'
+import { useNotificationsStore } from '@/modules/notifications/store'
 import { toAppError } from '@/utils/problem'
 import GroupDashboardTab from '../components/GroupDashboardTab.vue'
 import GroupInvitationsTab from '../components/GroupInvitationsTab.vue'
@@ -22,6 +23,7 @@ import GroupRoleChip from '../components/GroupRoleChip.vue'
 import GroupSettingsTab from '../components/GroupSettingsTab.vue'
 import GroupTransactionsTab from '../components/GroupTransactionsTab.vue'
 import { useResource } from '../composables'
+import { provideGroupRefresh } from '../refresh'
 import { groupService } from '../services/groupService'
 import type { GroupDetailDto } from '../types'
 
@@ -38,6 +40,58 @@ const detail = useResource(
   { clearOnKeyChange: true },
 )
 const group = detail.data
+const notifications = useNotificationsStore()
+
+// ---- Atualizar (D-050): recarrega o grupo, a aba atual (inclui o dashboard) e o contador do sino ----
+const refreshAll = provideGroupRefresh()
+const refreshing = ref(false)
+const lastUpdated = ref<Date | null>(null)
+
+function markUpdated(): void {
+  lastUpdated.value = new Date()
+}
+
+// A primeira carga também conta como "atualizado".
+watch(
+  () => detail.loadedOnce.value,
+  (loaded) => {
+    if (loaded && !lastUpdated.value) markUpdated()
+  },
+  { immediate: true },
+)
+
+const lastUpdatedLabel = computed(() =>
+  lastUpdated.value
+    ? `Atualizado às ${lastUpdated.value.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+    : '',
+)
+
+async function refresh(): Promise<void> {
+  // Sem rajada: enquanto uma atualização está em andamento, novos cliques são ignorados.
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    const [, tabsOk] = await Promise.all([
+      detail.reload(),
+      refreshAll.runAll(),
+      notifications.fetchCount({ force: true }),
+    ])
+    const ok = tabsOk && detail.error.value === null
+    if (ok) markUpdated()
+    toast.add(
+      ok
+        ? { severity: 'success', summary: 'Dados atualizados', life: 2000 }
+        : {
+            severity: 'error',
+            summary: 'Não foi possível atualizar',
+            detail: detail.error.value ?? 'Alguns dados não foram recarregados. Tente novamente.',
+            life: 5000,
+          },
+    )
+  } finally {
+    refreshing.value = false
+  }
+}
 
 /** Abas visíveis: Convites só para quem pode convidar (`permissions.canInvite`). */
 const tabs = computed(() => {
@@ -134,6 +188,24 @@ const notFound = computed(() => detail.errorStatus.value === 404)
             <i class="pi pi-users" aria-hidden="true" />
             {{ group.memberCount }} {{ group.memberCount === 1 ? 'membro' : 'membros' }}
           </span>
+          <span class="group-page__refresh">
+            <span class="group-page__updated" role="status" aria-live="polite" data-testid="last-updated">{{
+              refreshing ? 'Atualizando…' : lastUpdatedLabel
+            }}</span>
+            <Button
+              type="button"
+              label="Atualizar"
+              icon="pi pi-refresh"
+              severity="secondary"
+              outlined
+              size="small"
+              :loading="refreshing"
+              :aria-busy="refreshing"
+              aria-label="Atualizar dados do grupo"
+              data-testid="refresh-button"
+              @click="refresh"
+            />
+          </span>
         </template>
       </PageHeader>
 
@@ -204,6 +276,18 @@ const notFound = computed(() => detail.errorStatus.value === 404)
   display: inline-flex;
   gap: 0.375rem;
   align-items: center;
+  color: var(--gf-text-muted);
+}
+
+.group-page__refresh {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.group-page__updated {
+  font-size: 0.8125rem;
   color: var(--gf-text-muted);
 }
 

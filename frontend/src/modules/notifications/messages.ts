@@ -21,16 +21,16 @@ export function notificationText(n: NotificationDto): string {
   const tx = n.transaction
   const description = tx?.description ?? 'uma movimentação'
   const amount = tx ? formatCurrency(tx.amount) : ''
-  const isIncome = tx?.type === 'Income'
 
   if (n.type === 'GroupTransactionCreated') {
-    const kind = isIncome ? 'receita' : 'despesa'
-    return `${actor} lançou uma nova ${kind} em ${group}: ${description}${tx ? ` (${amount})` : ''}`
+    if (tx?.seriesOccurrences && tx.seriesOccurrences > 1) {
+      return `${actor} lançou uma despesa recorrente em ${group}: ${description} (${tx.seriesOccurrences}x de ${amount})`
+    }
+    return `${actor} lançou uma nova despesa em ${group}: ${description}${tx ? ` (${amount})` : ''}`
   }
 
-  // GroupPaymentRegistered
-  const verb = isIncome ? 'recebeu' : 'pagou'
-  return `${actor} ${verb}${tx ? ` ${amount}` : ''} de ${description} em ${group}`
+  // GroupPaymentRegistered: `amount` é o total pago (principal + juros).
+  return `${actor} pagou${tx ? ` ${amount}` : ''} de ${description} em ${group}`
 }
 
 const INVITATION_STATUS_LABELS: Record<GroupInvitationStatus, string | null> = {

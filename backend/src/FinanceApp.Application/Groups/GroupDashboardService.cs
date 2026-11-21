@@ -10,9 +10,8 @@ using FinanceApp.Application.Common.Abstractions;
 namespace FinanceApp.Application.Groups;
 
 /// <summary>
-/// Dashboard do grupo (D-034, contrato §16.3). Período por <c>transactionDate</c>, somente movimentações NÃO canceladas.
-/// "Quem cadastrou" (soma dos valores) e "quem pagou" (soma dos pagamentos) são sempre calculados separadamente;
-/// pendente nunca conta como pago. Todas as agregações são feitas no banco.
+/// Dashboard do grupo (D-034 emendada por D-046/D-048, contrato §16.3). Período por <c>transactionDate</c>, somente despesas NÃO
+/// canceladas. Pago = principal + juros; pendente = original − principal pago (nunca conta como pago). Agregações feitas no banco.
 /// </summary>
 public sealed class GroupDashboardService(
     IAppDbContext db,
@@ -28,11 +27,12 @@ public sealed class GroupDashboardService(
         var to = query.To!.Value;
         var inPeriod = Period(groupId, from, to);
 
-        var totals = await TransactionAggregates.GetTotalsAsync(inPeriod, cancellationToken).ConfigureAwait(false);
-        var created = await GetCreatedByAsync(inPeriod, cancellationToken).ConfigureAwait(false);
-        var paid = await GetPaidByAsync(inPeriod, cancellationToken).ConfigureAwait(false);
+        var expenses = await inPeriod.SumAsync(t => (decimal?)t.Amount, cancellationToken).ConfigureAwait(false) ?? 0m;
+        var principalPaid = await inPeriod.SumAsync(t => (decimal?)t.PaidAmount, cancellationToken).ConfigureAwait(false) ?? 0m;
+        var payers = await GetPayersAsync(inPeriod, cancellationToken).ConfigureAwait(false);
+        var interest = payers.Sum(p => p.Interest);
 
-        var userIds = created.Select(a => a.UserId).Concat(paid.Select(a => a.UserId)).Distinct().ToList();
+        var userIds = payers.Select(a => a.UserId).ToList();
         var names = await access.LoadUserNamesAsync(userIds, cancellationToken).ConfigureAwait(false);
         var statuses = await db.GroupMembers
             .AsNoTracking()
@@ -40,22 +40,14 @@ public sealed class GroupDashboardService(
             .ToDictionaryAsync(m => m.UserId, m => m.Status, cancellationToken)
             .ConfigureAwait(false);
 
-        var byCategory = await GetExpensesByCategoryAsync(inPeriod, totals.Expense, cancellationToken).ConfigureAwait(false);
+        var byCategory = await GetExpensesByCategoryAsync(inPeriod, expenses, cancellationToken).ConfigureAwait(false);
         var monthly = await GetMonthlyAsync(groupId, query, cancellationToken).ConfigureAwait(false);
-        var previous = await GetPreviousPeriodAsync(groupId, from, to, totals.Expense, totals.Income, cancellationToken).ConfigureAwait(false);
+        var previous = await GetPreviousPeriodAsync(groupId, from, to, expenses, cancellationToken).ConfigureAwait(false);
 
         return new GroupDashboardDto(
             new DashboardPeriodDto(from, to),
-            new GroupDashboardTotalsDto(
-                totals.Expense,
-                totals.PaidExpense,
-                totals.PendingExpense,
-                totals.Income,
-                totals.ReceivedIncome,
-                totals.PendingIncome,
-                totals.Income - totals.Expense),
-            GroupDashboardMath.BuildParticipation(created, names, statuses),
-            GroupDashboardMath.BuildParticipation(paid, names, statuses),
+            GroupDashboardMath.Totals(expenses, principalPaid, interest),
+            GroupDashboardMath.BuildPaidBy(payers, names, statuses),
             byCategory,
             monthly,
             previous);
@@ -67,37 +59,15 @@ public sealed class GroupDashboardService(
     private IQueryable<Transaction> Period(Guid groupId, DateOnly from, DateOnly to) =>
         NonCanceled(groupId).Where(t => t.TransactionDate >= from && t.TransactionDate <= to);
 
-    /// <summary>Por quem CADASTROU: soma dos valores por <c>CreatedByUserId</c>.</summary>
-    private static async Task<List<ParticipationAmount>> GetCreatedByAsync(IQueryable<Transaction> inPeriod, CancellationToken cancellationToken)
-    {
-        var rows = await inPeriod
-            .GroupBy(t => new { t.CreatedByUserId, t.Type })
-            .Select(g => new { g.Key.CreatedByUserId, g.Key.Type, Total = g.Sum(t => t.Amount) })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-        return ToParticipation(rows.Select(r => (r.CreatedByUserId, r.Type, r.Total)));
-    }
-
-    /// <summary>Por quem PAGOU/RECEBEU: soma dos PAGAMENTOS por pagador, de movimentações do período (pendente não conta).</summary>
-    private async Task<List<ParticipationAmount>> GetPaidByAsync(IQueryable<Transaction> inPeriod, CancellationToken cancellationToken)
-    {
-        var rows = await (
+    /// <summary>Por quem PAGOU: principal e juros somados por pagador, das despesas do período (pendente não conta).</summary>
+    private async Task<List<PayerAmount>> GetPayersAsync(IQueryable<Transaction> inPeriod, CancellationToken cancellationToken) =>
+        await (
                 from p in db.TransactionPayments.AsNoTracking()
                 join t in inPeriod on p.TransactionId equals t.Id
-                group p by new { p.CreatedByUserId, t.Type } into g
-                select new { g.Key.CreatedByUserId, g.Key.Type, Total = g.Sum(p => p.Amount) })
+                group p by p.CreatedByUserId into g
+                select new PayerAmount(g.Key, g.Sum(p => p.Amount), g.Sum(p => p.InterestAmount)))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-        return ToParticipation(rows.Select(r => (r.CreatedByUserId, r.Type, r.Total)));
-    }
-
-    private static List<ParticipationAmount> ToParticipation(IEnumerable<(Guid UserId, TransactionType Type, decimal Total)> rows) =>
-        rows.GroupBy(r => r.UserId)
-            .Select(g => new ParticipationAmount(
-                g.Key,
-                g.Where(r => r.Type == TransactionType.Expense).Sum(r => r.Total),
-                g.Where(r => r.Type == TransactionType.Income).Sum(r => r.Total)))
-            .ToList();
 
     /// <summary>Despesas pela categoria RAIZ, com o detalhamento das subcategorias (percentual da subcategoria sobre a raiz).</summary>
     private async Task<IReadOnlyList<GroupCategoryShareDto>> GetExpensesByCategoryAsync(
@@ -106,7 +76,6 @@ public sealed class GroupDashboardService(
         CancellationToken cancellationToken)
     {
         var groups = await inPeriod
-            .Where(t => t.Type == TransactionType.Expense)
             .GroupBy(t => new { RootId = t.Category!.ParentCategoryId ?? t.CategoryId, t.CategoryId })
             .Select(g => new { g.Key.RootId, g.Key.CategoryId, Total = g.Sum(t => t.Amount) })
             .ToListAsync(cancellationToken)
@@ -154,10 +123,17 @@ public sealed class GroupDashboardService(
         var firstMonth = lastMonth.AddMonths(-(query.Months - 1));
         var endExclusive = lastMonth.AddMonths(1);
 
-        var rows = await NonCanceled(groupId)
-            .Where(t => t.TransactionDate >= firstMonth && t.TransactionDate < endExclusive)
-            .GroupBy(t => new { t.TransactionDate.Year, t.TransactionDate.Month, t.Type })
-            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Type, Total = g.Sum(t => t.Amount) })
+        var inRange = NonCanceled(groupId).Where(t => t.TransactionDate >= firstMonth && t.TransactionDate < endExclusive);
+        var expenseRows = await inRange
+            .GroupBy(t => new { t.TransactionDate.Year, t.TransactionDate.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(t => t.Amount) })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var paidRows = await (
+                from p in db.TransactionPayments.AsNoTracking()
+                join t in inRange on p.TransactionId equals t.Id
+                group p by new { t.TransactionDate.Year, t.TransactionDate.Month } into g
+                select new { g.Key.Year, g.Key.Month, Total = g.Sum(p => p.Amount + p.InterestAmount) })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -167,8 +143,8 @@ public sealed class GroupDashboardService(
             var month = firstMonth.AddMonths(i);
             months.Add(new GroupMonthlyDto(
                 ReportMath.MonthKey(month),
-                rows.Where(r => r.Year == month.Year && r.Month == month.Month && r.Type == TransactionType.Income).Sum(r => r.Total),
-                rows.Where(r => r.Year == month.Year && r.Month == month.Month && r.Type == TransactionType.Expense).Sum(r => r.Total)));
+                expenseRows.Where(r => r.Year == month.Year && r.Month == month.Month).Sum(r => r.Total),
+                paidRows.Where(r => r.Year == month.Year && r.Month == month.Month).Sum(r => r.Total)));
         }
 
         return months;
@@ -179,24 +155,10 @@ public sealed class GroupDashboardService(
         DateOnly from,
         DateOnly to,
         decimal currentExpenses,
-        decimal currentIncome,
         CancellationToken cancellationToken)
     {
         var (previousFrom, previousTo) = GroupDashboardMath.PreviousPeriod(from, to);
-        var previous = await Period(groupId, previousFrom, previousTo)
-            .GroupBy(t => t.Type)
-            .Select(g => new { Type = g.Key, Total = g.Sum(t => t.Amount) })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-        var expenses = previous.Where(p => p.Type == TransactionType.Expense).Sum(p => p.Total);
-        var income = previous.Where(p => p.Type == TransactionType.Income).Sum(p => p.Total);
-
-        return new GroupPreviousPeriodDto(
-            previousFrom,
-            previousTo,
-            expenses,
-            income,
-            GroupDashboardMath.ChangePercent(currentExpenses, expenses),
-            GroupDashboardMath.ChangePercent(currentIncome, income));
+        var expenses = await Period(groupId, previousFrom, previousTo).SumAsync(t => (decimal?)t.Amount, cancellationToken).ConfigureAwait(false) ?? 0m;
+        return new GroupPreviousPeriodDto(previousFrom, previousTo, expenses, GroupDashboardMath.ChangePercent(currentExpenses, expenses));
     }
 }

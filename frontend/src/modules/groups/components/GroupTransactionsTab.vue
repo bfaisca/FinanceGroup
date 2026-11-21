@@ -13,6 +13,7 @@ import {
   toGroupListQuery,
   type GroupTransactionFilters,
 } from '../filters'
+import { useGroupRefreshHandler } from '../refresh'
 import { groupService } from '../services/groupService'
 import { groupTransactionService } from '../services/groupTransactionService'
 import type { GroupDetailDto, GroupTransactionDetailDto, GroupTransactionDto } from '../types'
@@ -65,6 +66,13 @@ const detailVisible = computed({
   },
 })
 const refreshToken = ref(0)
+
+useGroupRefreshHandler(async () => {
+  await Promise.all([list.reload(), members.reload()])
+  // O detalhe aberto (drawer) também é recarregado.
+  refreshToken.value += 1
+  return list.error.value === null
+})
 
 function openDetail(tx: GroupTransactionDto): void {
   void router.replace({ query: { ...route.query, open: tx.id } })

@@ -47,6 +47,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<GroupInvitation> GroupInvitations => Set<GroupInvitation>();
 
+    public DbSet<GroupTransactionSeries> GroupTransactionSeries => Set<GroupTransactionSeries>();
+
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)

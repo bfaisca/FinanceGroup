@@ -60,6 +60,40 @@ internal sealed class GroupMemberConfiguration : IEntityTypeConfiguration<GroupM
     }
 }
 
+internal sealed class GroupTransactionSeriesConfiguration : IEntityTypeConfiguration<GroupTransactionSeries>
+{
+    public void Configure(EntityTypeBuilder<GroupTransactionSeries> builder)
+    {
+        builder.ToTable("group_transaction_series", t =>
+        {
+            t.HasCheckConstraint(
+                "ck_group_transaction_series_occurrences",
+                $"occurrences BETWEEN {GroupTransactionSeries.MinOccurrences} AND {GroupTransactionSeries.MaxOccurrences}");
+            // Sem diária (Daily) nem personalizada (Custom), D-049.
+            t.HasCheckConstraint(
+                "ck_group_transaction_series_frequency",
+                "frequency IN ('Weekly','Biweekly','Monthly','Bimonthly','Quarterly','Semiannual','Annual')");
+        });
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.Frequency).HasConversion<string>().HasMaxLength(16).IsRequired();
+        builder.Property(s => s.Occurrences).IsRequired();
+        builder.Property(s => s.CreatedAt).IsRequired();
+
+        builder.HasOne<Group>()
+            .WithMany()
+            .HasForeignKey(s => s.GroupId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(s => s.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(s => s.GroupId);
+        builder.HasIndex(s => s.CreatedByUserId);
+    }
+}
+
 internal sealed class GroupInvitationConfiguration : IEntityTypeConfiguration<GroupInvitation>
 {
     public void Configure(EntityTypeBuilder<GroupInvitation> builder)

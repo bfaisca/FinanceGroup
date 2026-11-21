@@ -11,7 +11,7 @@ import { useDebouncedCallback } from '@/composables/useDebouncedCallback'
 import { buildCategoryOptions } from '@/modules/categories/tree'
 import { SORT_OPTIONS } from '@/modules/transactions/filters'
 import { useCategoriesStore } from '@/stores/categories'
-import { enumOptions, STATUS_PRESENTATION, TRANSACTION_TYPE_LABELS } from '@/utils/labels'
+import { STATUS_PRESENTATION } from '@/utils/labels'
 import { countActiveGroupFilters, type GroupTransactionFilters } from '../filters'
 import type { GroupMemberDto } from '../types'
 
@@ -51,7 +51,6 @@ watch(
   },
 )
 
-const typeOptions = [{ value: null, label: 'Todos os tipos' }, ...enumOptions(TRANSACTION_TYPE_LABELS)]
 const statusOptions = [
   { value: null, label: 'Todas as situações' },
   ...(Object.keys(STATUS_PRESENTATION) as (keyof typeof STATUS_PRESENTATION)[]).map((value) => ({
@@ -60,23 +59,13 @@ const statusOptions = [
   })),
 ]
 
-interface CategoryGroup {
-  label: string
-  items: { value: string | null; label: string }[]
-}
-
-const categoryGroups = computed<CategoryGroup[]>(() => {
-  const groups: CategoryGroup[] = []
-  for (const [type, label] of [
-    ['Expense', 'Despesas'],
-    ['Income', 'Receitas'],
-  ] as const) {
-    if (props.modelValue.type && props.modelValue.type !== type) continue
-    const options = buildCategoryOptions(categories.items, type, { includeInactive: true })
-    if (options.length > 0) groups.push({ label, items: options.map((o) => ({ value: o.value, label: o.label })) })
-  }
-  return groups
-})
+// Grupos só têm despesas (D-046): sem filtro de tipo; só categorias de despesa.
+const categoryOptions = computed(() =>
+  buildCategoryOptions(categories.items, 'Expense', { includeInactive: true }).map((o) => ({
+    value: o.value,
+    label: o.label,
+  })),
+)
 
 const memberOptions = computed(() =>
   props.members.map((m) => ({ value: m.userId, label: m.status === 'Active' ? m.name : `${m.name} (ex-membro)` })),
@@ -141,18 +130,6 @@ function clearAll(): void {
             @update:model-value="update({ to: $event ?? undefined })"
           />
         </FormField>
-        <FormField id="gfilter-type" v-slot="{ id }" label="Tipo">
-          <Select
-            :input-id="id"
-            :model-value="modelValue.type ?? null"
-            :options="typeOptions"
-            option-label="label"
-            option-value="value"
-            placeholder="Todos os tipos"
-            fluid
-            @update:model-value="update({ type: $event ?? undefined, categoryId: undefined })"
-          />
-        </FormField>
         <FormField id="gfilter-status" v-slot="{ id }" label="Situação">
           <Select
             :input-id="id"
@@ -174,9 +151,7 @@ function clearAll(): void {
           <Select
             :input-id="id"
             :model-value="modelValue.categoryId ?? null"
-            :options="categoryGroups"
-            option-group-label="label"
-            option-group-children="items"
+            :options="categoryOptions"
             option-label="label"
             option-value="value"
             placeholder="Todas as categorias"

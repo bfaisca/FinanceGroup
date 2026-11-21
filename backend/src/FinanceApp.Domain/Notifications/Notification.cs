@@ -1,4 +1,5 @@
 using FinanceApp.Domain.Common;
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Transactions;
 
 namespace FinanceApp.Domain.Notifications;
@@ -36,10 +37,14 @@ public sealed class Notification
 
     public string? TransactionDescription { get; private set; }
 
-    public TransactionType? TransactionType { get; private set; }
-
-    /// <summary>Valor da movimentação (<c>GroupTransactionCreated</c>) ou do pagamento (<c>GroupPaymentRegistered</c>).</summary>
+    /// <summary>
+    /// Valor da movimentação (<c>GroupTransactionCreated</c>) ou o valor TOTAL do pagamento — principal + juros
+    /// (<c>GroupPaymentRegistered</c>, D-048).
+    /// </summary>
     public decimal? Amount { get; private set; }
+
+    /// <summary>Total de ocorrências criadas quando a notificação de criação é de uma série recorrente (D-049); senão nulo.</summary>
+    public int? SeriesOccurrences { get; private set; }
 
     public Guid? InvitationId { get; private set; }
 
@@ -56,24 +61,32 @@ public sealed class Notification
         Guid actorUserId,
         Guid transactionId,
         string description,
-        TransactionType transactionType,
         decimal transactionAmount,
-        DateTimeOffset now) =>
-        CreateForTransactionEvent(
-            NotificationType.GroupTransactionCreated, recipientUserId, groupId, actorUserId, transactionId, description, transactionType, transactionAmount, now);
+        DateTimeOffset now,
+        int? seriesOccurrences = null)
+    {
+        if (seriesOccurrences is { } n && n is < GroupTransactionSeries.MinOccurrences or > GroupTransactionSeries.MaxOccurrences)
+        {
+            throw new DomainException("O total de ocorrências da série é inválido.");
+        }
 
-    /// <summary>Pagamento/recebimento registrado (D-042b): <paramref name="paymentAmount"/> é o valor do PAGAMENTO.</summary>
+        var notification = CreateForTransactionEvent(
+            NotificationType.GroupTransactionCreated, recipientUserId, groupId, actorUserId, transactionId, description, transactionAmount, now);
+        notification.SeriesOccurrences = seriesOccurrences;
+        return notification;
+    }
+
+    /// <summary>Pagamento registrado (D-042b): <paramref name="paymentAmount"/> é o valor TOTAL do PAGAMENTO (principal + juros).</summary>
     public static Notification ForPaymentRegistered(
         Guid recipientUserId,
         Guid groupId,
         Guid actorUserId,
         Guid transactionId,
         string description,
-        TransactionType transactionType,
         decimal paymentAmount,
         DateTimeOffset now) =>
         CreateForTransactionEvent(
-            NotificationType.GroupPaymentRegistered, recipientUserId, groupId, actorUserId, transactionId, description, transactionType, paymentAmount, now);
+            NotificationType.GroupPaymentRegistered, recipientUserId, groupId, actorUserId, transactionId, description, paymentAmount, now);
 
     /// <summary>Convite recebido por quem já tem conta com o e-mail convidado (D-043).</summary>
     public static Notification ForInvitationReceived(
@@ -125,7 +138,6 @@ public sealed class Notification
         Guid actorUserId,
         Guid transactionId,
         string description,
-        TransactionType transactionType,
         decimal amount,
         DateTimeOffset now)
     {
@@ -158,7 +170,6 @@ public sealed class Notification
             ActorUserId = actorUserId,
             TransactionId = transactionId,
             TransactionDescription = trimmed,
-            TransactionType = transactionType,
             Amount = amount,
             CreatedAt = Guard.Utc(now),
         };

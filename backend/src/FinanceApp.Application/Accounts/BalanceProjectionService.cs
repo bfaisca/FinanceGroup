@@ -70,9 +70,9 @@ public sealed class BalanceProjectionService(IAppDbContext db)
                 income = totals.Where(t => t.Type == TransactionType.Income).Sum(t => t.Total);
                 expense = totals.Where(t => t.Type == TransactionType.Expense).Sum(t => t.Total);
 
-                // D-033: pagamentos de movimentações de GRUPO feitos com esta conta (do próprio pagador) entram na paymentDate,
-                // pelo valor PAGO (despesa subtrai, receita soma). Movimentações canceladas ficam fora (STATE_MACHINE.md).
-                var groupPayments = await (
+                // D-033/D-048: pagamentos de despesas de GRUPO feitos com esta conta (do próprio pagador) entram na paymentDate pelo
+                // valor efetivamente pago (principal + juros) e subtraem. Despesas canceladas ficam fora (STATE_MACHINE.md).
+                var groupPaid = await (
                         from p in db.TransactionPayments.AsNoTracking()
                         join t in db.Transactions.AsNoTracking() on p.TransactionId equals t.Id
                         where p.AccountId == accountId
@@ -80,12 +80,10 @@ public sealed class BalanceProjectionService(IAppDbContext db)
                               && t.Status != TransactionStatus.Canceled
                               && p.PaymentDate > referenceDate
                               && p.PaymentDate <= asOf
-                        group p by t.Type into g
-                        select new { Type = g.Key, Total = g.Sum(p => p.Amount) })
-                    .ToListAsync(cancellationToken)
+                        select p.Amount + p.InterestAmount)
+                    .SumAsync(cancellationToken)
                     .ConfigureAwait(false);
-                income += groupPayments.Where(t => t.Type == TransactionType.Income).Sum(t => t.Total);
-                expense += groupPayments.Where(t => t.Type == TransactionType.Expense).Sum(t => t.Total);
+                expense += groupPaid;
             }
 
             result[accountId] = new AccountBalanceInfo(

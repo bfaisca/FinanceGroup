@@ -19,7 +19,8 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
         {
             t.HasCheckConstraint("ck_transactions_amount_positive", "amount > 0");
             t.HasCheckConstraint("ck_transactions_paid_amount_range", "paid_amount >= 0 AND paid_amount <= amount");
-            t.HasCheckConstraint("ck_transactions_due_date_after_date", "due_date IS NULL OR due_date >= transaction_date");
+            // O vencimento é livre nas despesas de grupo (D-047); nas individuais nunca é anterior à data da movimentação.
+            t.HasCheckConstraint("ck_transactions_due_date_after_date", "due_date IS NULL OR group_id IS NOT NULL OR due_date >= transaction_date");
             t.HasCheckConstraint(
                 "ck_transactions_status_settlement",
                 "status IN ('Planned','Pending','Paid','Received','Canceled') " +
@@ -43,10 +44,15 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
             t.HasCheckConstraint(
                 "ck_transactions_installment_number_range",
                 "installment_number IS NULL OR installment_number BETWEEN 1 AND 120");
-            // Etapa 4 (D-032): movimentação de grupo nunca tem conta, cartão, parcelamento nem recorrência.
+            // Etapa 4 (D-032/D-046): movimentação de grupo é sempre despesa e nunca tem conta, cartão, parcelamento nem recorrência individuais.
             t.HasCheckConstraint(
                 "ck_transactions_group_rules",
-                "group_id IS NULL OR (account_id IS NULL AND credit_card_id IS NULL AND installment_plan_id IS NULL AND recurrence_rule_id IS NULL)");
+                "group_id IS NULL OR (type = 'Expense' AND account_id IS NULL AND credit_card_id IS NULL AND installment_plan_id IS NULL AND recurrence_rule_id IS NULL)");
+            // D-049: a série pertence a um grupo e o número da ocorrência acompanha a série.
+            t.HasCheckConstraint(
+                "ck_transactions_group_series",
+                "(group_series_id IS NULL) = (series_number IS NULL) AND (group_series_id IS NULL OR group_id IS NOT NULL) " +
+                "AND (series_number IS NULL OR series_number BETWEEN 1 AND 60)");
         });
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
@@ -96,6 +102,11 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
             .HasForeignKey(t => t.RecurrenceRuleId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(t => t.GroupSeries)
+            .WithMany()
+            .HasForeignKey(t => t.GroupSeriesId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasMany(t => t.Payments)
             .WithOne()
             .HasForeignKey(p => p.TransactionId)
@@ -120,6 +131,11 @@ internal sealed class TransactionConfiguration : IEntityTypeConfiguration<Transa
         builder.HasIndex(t => new { t.GroupId, t.CreatedByUserId })
             .HasFilter("group_id IS NOT NULL")
             .HasDatabaseName("ix_transactions_group_id_created_by_user_id");
+        // D-049: ocorrências de uma série (número único dentro da série).
+        builder.HasIndex(t => new { t.GroupSeriesId, t.SeriesNumber })
+            .IsUnique()
+            .HasFilter("group_series_id IS NOT NULL")
+            .HasDatabaseName("ux_transactions_group_series_id_series_number");
         builder.HasIndex(t => new { t.CreditCardId, t.DueDate })
             .HasFilter("credit_card_id IS NOT NULL")
             .HasDatabaseName("ix_transactions_credit_card_id_due_date");
@@ -144,13 +160,21 @@ internal sealed class TransactionPaymentConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<TransactionPayment> builder)
     {
-        builder.ToTable("transaction_payments", t => t.HasCheckConstraint("ck_transaction_payments_amount_positive", "amount > 0"));
+        builder.ToTable("transaction_payments", t => 
+        {
+            t.HasCheckConstraint("ck_transaction_payments_amount_positive", "amount > 0");
+            // D-048: juros/multa nunca negativos (0 = sem juros).
+            t.HasCheckConstraint("ck_transaction_payments_interest_non_negative", "interest_amount >= 0");
+        });
         builder.HasKey(p => p.Id);
         builder.Property(p => p.Id).ValueGeneratedNever();
         builder.Property(p => p.Amount).HasPrecision(18, 2).IsRequired();
+        builder.Property(p => p.InterestAmount).HasPrecision(18, 2).HasDefaultValue(0m).IsRequired();
+        builder.Ignore(p => p.TotalAmount);
         builder.Property(p => p.PaymentDate).IsRequired();
         builder.Property(p => p.PaymentMethod).HasConversion<string>().HasMaxLength(16);
         builder.Property(p => p.CreatedAt).IsRequired();
+        builder.Property(p => p.UpdatedAt).IsRequired();
 
         builder.HasOne<User>()
             .WithMany()

@@ -14,19 +14,19 @@ namespace FinanceApp.Application.Notifications;
 /// </summary>
 internal static class NotificationRecorder
 {
-    /// <summary>Nova movimentação de grupo → membros ativos, exceto o autor (D-042a).</summary>
+    /// <summary>Nova despesa de grupo (ou série inteira, D-049) → membros ativos, exceto o autor (D-042a).</summary>
     public static async Task AddTransactionCreatedAsync(
-        IAppDbContext db, Transaction transaction, Guid groupId, Guid actorUserId, DateTimeOffset now, CancellationToken cancellationToken)
+        IAppDbContext db, Transaction transaction, Guid groupId, Guid actorUserId, DateTimeOffset now, int? seriesOccurrences, CancellationToken cancellationToken)
     {
         var recipients = await ActiveRecipientsAsync(db, groupId, actorUserId, cancellationToken).ConfigureAwait(false);
         foreach (var recipientId in recipients)
         {
             db.Notifications.Add(Notification.ForTransactionCreated(
-                recipientId, groupId, actorUserId, transaction.Id, transaction.Description, transaction.Type, transaction.Amount, now));
+                recipientId, groupId, actorUserId, transaction.Id, transaction.Description, transaction.Amount, now, seriesOccurrences));
         }
     }
 
-    /// <summary>Pagamento/recebimento registrado → membros ativos, exceto o pagador; o valor é o do pagamento (D-042b).</summary>
+    /// <summary>Pagamento/recebimento registrado → membros ativos, exceto o pagador; o valor é o TOTAL do pagamento: principal + juros (D-042b/D-048).</summary>
     public static async Task AddPaymentRegisteredAsync(
         IAppDbContext db, Transaction transaction, Guid groupId, Guid payerUserId, decimal paymentAmount, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -34,7 +34,7 @@ internal static class NotificationRecorder
         foreach (var recipientId in recipients)
         {
             db.Notifications.Add(Notification.ForPaymentRegistered(
-                recipientId, groupId, payerUserId, transaction.Id, transaction.Description, transaction.Type, paymentAmount, now));
+                recipientId, groupId, payerUserId, transaction.Id, transaction.Description, paymentAmount, now));
         }
     }
 

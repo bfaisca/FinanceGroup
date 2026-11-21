@@ -118,9 +118,9 @@ public class GroupsApiTests(ApiFactory factory)
             ("revoke", HttpMethod.Delete, $"/api/v1/groups/{gid}/invitations/{someId}", null),
             ("dashboard", HttpMethod.Get, $"/api/v1/groups/{gid}/dashboard?from=2026-01-01&to=2026-12-31", null),
             ("tx-list", HttpMethod.Get, $"/api/v1/groups/{gid}/transactions", null),
-            ("tx-create", HttpMethod.Post, $"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Invasão", "Expense", 10m, category, h.Today)),
+            ("tx-create", HttpMethod.Post, $"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Invasão", 10m, category, h.Today)),
             ("tx-get", HttpMethod.Get, $"/api/v1/groups/{gid}/transactions/{tx.Id}", null),
-            ("tx-put", HttpMethod.Put, $"/api/v1/groups/{gid}/transactions/{tx.Id}", GroupSupport.GroupTxBody("Invasão", "Expense", 10m, category, h.Today)),
+            ("tx-put", HttpMethod.Put, $"/api/v1/groups/{gid}/transactions/{tx.Id}", GroupSupport.GroupTxBody("Invasão", 10m, category, h.Today)),
             ("tx-delete", HttpMethod.Delete, $"/api/v1/groups/{gid}/transactions/{tx.Id}", null),
             ("tx-cancel", HttpMethod.Post, $"/api/v1/groups/{gid}/transactions/{tx.Id}/cancel", null),
             ("tx-reopen", HttpMethod.Post, $"/api/v1/groups/{gid}/transactions/{tx.Id}/reopen", null),
@@ -251,8 +251,8 @@ public class GroupsApiTests(ApiFactory factory)
         async Task AssertUnprocessable(Task<HttpResponseMessage> call) =>
             await ReadProblemAsync(await call, HttpStatusCode.UnprocessableEntity, "business_rule_violation");
         await AssertUnprocessable(owner.Put($"/api/v1/groups/{gid}", new { name = "Novo" }));
-        await AssertUnprocessable(owner.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Nova", "Expense", 10m, category, h.Today)));
-        await AssertUnprocessable(owner.Put($"/api/v1/groups/{gid}/transactions/{tx.Id}", GroupSupport.GroupTxBody("Edit", "Expense", 100m, category, h.Today)));
+        await AssertUnprocessable(owner.Post($"/api/v1/groups/{gid}/transactions", GroupSupport.GroupTxBody("Nova", 10m, category, h.Today)));
+        await AssertUnprocessable(owner.Put($"/api/v1/groups/{gid}/transactions/{tx.Id}", GroupSupport.GroupTxBody("Edit", 100m, category, h.Today)));
         await AssertUnprocessable(owner.Post($"/api/v1/groups/{gid}/transactions/{tx.Id}/cancel"));
         await AssertUnprocessable(owner.Delete($"/api/v1/groups/{gid}/transactions/{tx.Id}"));
         await AssertUnprocessable(member.Post($"/api/v1/groups/{gid}/transactions/{tx.Id}/payments", new { amount = 10m, paymentDate = h.Today }));

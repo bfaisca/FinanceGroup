@@ -18,13 +18,15 @@ import { paidPercentage } from '@/modules/transactions/actions'
 import TransactionAmount from '@/modules/transactions/components/TransactionAmount.vue'
 import TransactionStatusChip from '@/modules/transactions/components/TransactionStatusChip.vue'
 import { formatCurrency, formatDate } from '@/utils/format'
-import { PAYMENT_METHOD_LABELS, paymentActionLabel, TRANSACTION_TYPE_LABELS } from '@/utils/labels'
+import { PAYMENT_METHOD_LABELS } from '@/utils/labels'
 import { toAppError } from '@/utils/problem'
 import { groupTransactionActions } from '../actions'
 import { useGroupTransactionDetail } from '../composables'
 import { groupTransactionService } from '../services/groupTransactionService'
 import type { GroupTransactionDetailDto, GroupTransactionPaymentDto } from '../types'
+import GroupPaidSummary from './GroupPaidSummary.vue'
 import GroupPaymentFormDialog from './GroupPaymentFormDialog.vue'
+import GroupSeriesBadge from './GroupSeriesBadge.vue'
 import GroupTransactionHistoryList from './GroupTransactionHistoryList.vue'
 
 type PendingConfirm =
@@ -49,13 +51,14 @@ const { detail, loading, error, history, historyLoading, historyError, historyLo
 
 const activeTab = ref('details')
 const paymentDialogVisible = ref(false)
+/** Pagamento em edição (o próprio); `null` = novo pagamento. */
+const editingPayment = ref<GroupTransactionPaymentDto | null>(null)
 const confirmVisible = ref(false)
 const pending = ref<PendingConfirm | null>(null)
 const busy = ref(false)
 
 const actions = computed(() => (detail.value ? groupTransactionActions(detail.value) : null))
 const percentage = computed(() => (detail.value ? paidPercentage(detail.value.paidAmount, detail.value.amount) : 0))
-const isIncome = computed(() => detail.value?.type === 'Income')
 
 watch(
   () => [visible.value, props.transactionId] as const,
@@ -101,11 +104,21 @@ const confirmCopy = computed(() => {
     default:
       return {
         header: 'Remover pagamento',
-        message: `Remover o seu pagamento de ${formatCurrency(current.payment.amount)} de ${formatDate(current.payment.paymentDate)}? A situação da movimentação será recalculada.`,
+        message: `Remover o seu pagamento de ${formatCurrency(current.payment.totalAmount)} de ${formatDate(current.payment.paymentDate)}? A situação da movimentação será recalculada.`,
         label: 'Remover pagamento',
       }
   }
 })
+
+function openNewPayment(): void {
+  editingPayment.value = null
+  paymentDialogVisible.value = true
+}
+
+function openEditPayment(payment: GroupTransactionPaymentDto): void {
+  editingPayment.value = payment
+  paymentDialogVisible.value = true
+}
 
 function ask(confirm: PendingConfirm): void {
   pending.value = confirm
@@ -211,23 +224,17 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                 <span class="gtx-drawer__amount"
                   ><TransactionAmount :amount="detail.amount" :type="detail.type"
                 /></span>
-                <TransactionStatusChip :status="detail.status" />
+                <span class="gtx-drawer__chips">
+                  <GroupSeriesBadge v-if="detail.series" :series="detail.series" />
+                  <TransactionStatusChip :status="detail.status" />
+                </span>
               </div>
 
               <section aria-labelledby="gtx-progress-title">
-                <h3 id="gtx-progress-title" class="gtx-drawer__section-title">
-                  {{ isIncome ? 'Recebimento' : 'Pagamento' }}
-                </h3>
-                <ProgressBar
-                  :value="percentage"
-                  :show-value="false"
-                  :aria-label="`${percentage}% ${isIncome ? 'recebido' : 'pago'}`"
-                />
+                <h3 id="gtx-progress-title" class="gtx-drawer__section-title">Pagamento</h3>
+                <ProgressBar :value="percentage" :show-value="false" :aria-label="`${percentage}% da conta paga`" />
                 <p class="gtx-drawer__progress-text">
-                  <span
-                    >{{ isIncome ? 'Recebido' : 'Pago' }}:
-                    <strong class="money">{{ formatCurrency(detail.paidAmount) }}</strong></span
-                  >
+                  <GroupPaidSummary :amount="detail.amount" :paid="detail.totalPaid" :interest="detail.interestPaid" />
                   <span
                     >Restante: <strong class="money">{{ formatCurrency(detail.remainingAmount) }}</strong></span
                   >
@@ -238,10 +245,6 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                 <div>
                   <dt>Cadastrada por</dt>
                   <dd data-testid="detail-created-by">{{ detail.createdBy.name }}</dd>
-                </div>
-                <div>
-                  <dt>Tipo</dt>
-                  <dd>{{ TRANSACTION_TYPE_LABELS[detail.type] }}</dd>
                 </div>
                 <div>
                   <dt>Categoria</dt>
@@ -266,8 +269,15 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                   <dt>Vencimento</dt>
                   <dd>{{ formatDate(detail.dueDate) }}</dd>
                 </div>
+                <div v-if="detail.series">
+                  <dt>Recorrência</dt>
+                  <dd data-testid="detail-series">
+                    Conta {{ detail.series.number }} de {{ detail.series.total }}. Cada conta da série é editada, paga
+                    ou cancelada separadamente.
+                  </dd>
+                </div>
                 <div v-if="detail.paidAt">
-                  <dt>{{ isIncome ? 'Recebida em' : 'Paga em' }}</dt>
+                  <dt>Paga em</dt>
                   <dd>{{ formatDate(detail.paidAt) }}</dd>
                 </div>
                 <div v-if="detail.notes" class="gtx-drawer__notes">
@@ -277,24 +287,20 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
               </dl>
 
               <section aria-labelledby="gtx-payments-title">
-                <h3 id="gtx-payments-title" class="gtx-drawer__section-title">
-                  {{ isIncome ? 'Recebimentos' : 'Pagamentos' }}
-                </h3>
-                <p v-if="detail.payments.length === 0" class="gtx-drawer__muted">
-                  Nenhum {{ isIncome ? 'recebimento' : 'pagamento' }} registrado.
-                </p>
+                <h3 id="gtx-payments-title" class="gtx-drawer__section-title">Pagamentos</h3>
+                <p v-if="detail.payments.length === 0" class="gtx-drawer__muted">Nenhum pagamento registrado.</p>
                 <div v-else class="table-scroll">
                   <table class="gtx-drawer__payments">
                     <caption class="sr-only">
-                      {{
-                        isIncome ? 'Recebimentos registrados' : 'Pagamentos registrados'
-                      }}
+                      Pagamentos registrados
                     </caption>
                     <thead>
                       <tr>
-                        <th scope="col">{{ isIncome ? 'Quem recebeu' : 'Quem pagou' }}</th>
+                        <th scope="col">Quem pagou</th>
                         <th scope="col">Data</th>
-                        <th scope="col">Valor</th>
+                        <th scope="col" class="num">Valor da conta</th>
+                        <th scope="col" class="num">Juros/multa</th>
+                        <th scope="col" class="num">Total pago</th>
                         <th scope="col">Método</th>
                         <th scope="col"><span class="sr-only">Ações</span></th>
                       </tr>
@@ -303,9 +309,24 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                       <tr v-for="payment in detail.payments" :key="payment.id">
                         <td>{{ payment.paidBy.name }}</td>
                         <td>{{ formatDate(payment.paymentDate) }}</td>
-                        <td class="money">{{ formatCurrency(payment.amount) }}</td>
+                        <td class="num money">{{ formatCurrency(payment.amount) }}</td>
+                        <td class="num money">{{ formatCurrency(payment.interestAmount) }}</td>
+                        <td class="num money">
+                          <strong>{{ formatCurrency(payment.totalAmount) }}</strong>
+                        </td>
                         <td>{{ payment.paymentMethod ? PAYMENT_METHOD_LABELS[payment.paymentMethod] : '—' }}</td>
-                        <td>
+                        <td class="gtx-drawer__row-actions">
+                          <Button
+                            v-if="payment.canEdit"
+                            type="button"
+                            icon="pi pi-pencil"
+                            severity="secondary"
+                            text
+                            rounded
+                            :aria-label="`Editar seu pagamento de ${formatCurrency(payment.totalAmount)} em ${formatDate(payment.paymentDate)}`"
+                            :disabled="busy"
+                            @click="openEditPayment(payment)"
+                          />
                           <Button
                             v-if="payment.canRemove"
                             type="button"
@@ -313,7 +334,7 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                             severity="danger"
                             text
                             rounded
-                            :aria-label="`Remover seu pagamento de ${formatCurrency(payment.amount)} em ${formatDate(payment.paymentDate)}`"
+                            :aria-label="`Remover seu pagamento de ${formatCurrency(payment.totalAmount)} em ${formatDate(payment.paymentDate)}`"
                             :disabled="busy"
                             @click="ask({ kind: 'removePayment', payment })"
                           />
@@ -323,7 +344,7 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                   </table>
                 </div>
                 <p class="gtx-drawer__muted gtx-drawer__rule">
-                  Você pode registrar e remover apenas o seu próprio pagamento.
+                  Você pode registrar, editar e remover apenas o seu próprio pagamento.
                 </p>
               </section>
 
@@ -336,10 +357,10 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                 <Button
                   v-if="actions.canPay"
                   type="button"
-                  :label="paymentActionLabel(detail.type)"
+                  label="Registrar pagamento"
                   icon="pi pi-check-circle"
                   :disabled="busy"
-                  @click="paymentDialogVisible = true"
+                  @click="openNewPayment"
                 />
                 <Button
                   v-if="actions.canEdit"
@@ -408,6 +429,7 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
       v-model:visible="paymentDialogVisible"
       :group-id="groupId"
       :transaction="detail"
+      :payment="editingPayment"
       @saved="onPaymentSaved"
     />
 
@@ -445,6 +467,21 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.gtx-drawer__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.gtx-drawer__row-actions {
+  white-space: nowrap;
+}
+
+.gtx-drawer__payments .num {
+  text-align: right;
 }
 
 .gtx-drawer__amount {

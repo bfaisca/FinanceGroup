@@ -20,25 +20,26 @@ public sealed class GroupDashboardQuery
     public string? EndMonth { get; init; }
 }
 
-/// <summary>Totais do período (movimentações NÃO canceladas). Pendente = valor − pago; nunca conta como pago.</summary>
+/// <summary>
+/// Totais do período (despesas NÃO canceladas, D-046/D-048). <c>Expenses</c> = Σ valores originais; <c>ExpensesPaidPrincipal</c> =
+/// Σ principal pago; <c>ExpensesPaid</c> = principal + juros (efetivamente pago); <c>ExpensesPending</c> = originais − principal
+/// pago (só principal; nunca negativo).
+/// </summary>
 public sealed record GroupDashboardTotalsDto(
     decimal Expenses,
+    decimal ExpensesPaidPrincipal,
+    decimal InterestPaid,
     decimal ExpensesPaid,
-    decimal ExpensesPending,
-    decimal Income,
-    decimal IncomeReceived,
-    decimal IncomePending,
-    decimal Balance);
+    decimal ExpensesPending);
 
-/// <summary>Participação (indicador estatístico, não é dívida): percentuais 0–100 com 2 casas.</summary>
-public sealed record GroupParticipationItemDto(
+/// <summary>"Contas Pagas": quanto cada pessoa efetivamente pagou (principal + juros). Indicador estatístico, não é dívida.</summary>
+public sealed record GroupPaidByItemDto(
     Guid UserId,
     string Name,
     GroupMemberStatus Status,
-    decimal ExpenseAmount,
-    decimal ExpensePercent,
-    decimal IncomeAmount,
-    decimal IncomePercent);
+    decimal PaidAmount,
+    decimal InterestAmount,
+    decimal Percent);
 
 public sealed record GroupCategoryChildDto(Guid CategoryId, string Name, decimal Amount, decimal Percent);
 
@@ -50,22 +51,20 @@ public sealed record GroupCategoryShareDto(
     decimal Percent,
     IReadOnlyList<GroupCategoryChildDto> Children);
 
-public sealed record GroupMonthlyDto(string Month, decimal Income, decimal Expenses);
+/// <summary>Por mês de <c>transactionDate</c>; <c>Paid</c> = efetivamente pago (principal + juros) das contas do mês.</summary>
+public sealed record GroupMonthlyDto(string Month, decimal Expenses, decimal Paid);
 
 /// <summary>Comparação com o período imediatamente anterior de mesma duração; variação nula quando a base é zero.</summary>
 public sealed record GroupPreviousPeriodDto(
     DateOnly From,
     DateOnly To,
     decimal Expenses,
-    decimal Income,
-    decimal? ExpensesChangePercent,
-    decimal? IncomeChangePercent);
+    decimal? ExpensesChangePercent);
 
 public sealed record GroupDashboardDto(
     DashboardPeriodDto Period,
     GroupDashboardTotalsDto Totals,
-    IReadOnlyList<GroupParticipationItemDto> CreatedBy,
-    IReadOnlyList<GroupParticipationItemDto> PaidBy,
+    IReadOnlyList<GroupPaidByItemDto> PaidBy,
     IReadOnlyList<GroupCategoryShareDto> ExpensesByCategory,
     IReadOnlyList<GroupMonthlyDto> Monthly,
     GroupPreviousPeriodDto PreviousPeriod);

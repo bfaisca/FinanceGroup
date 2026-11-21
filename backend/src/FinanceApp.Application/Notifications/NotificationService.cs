@@ -5,6 +5,7 @@ using FinanceApp.Application.Common.Validation;
 using FinanceApp.Application.Groups;
 using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Notifications;
+using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -178,7 +179,7 @@ public sealed class NotificationService(
                 new NotificationGroupDto(n.GroupId, groupNames.GetValueOrDefault(n.GroupId, string.Empty)),
                 n.ActorUserId is { } actorId ? new NotificationActorDto(actorId, actorNames.GetValueOrDefault(actorId, User.AnonymizedName)) : null,
                 n.TransactionId is { } txId
-                    ? new NotificationTransactionDto(txId, n.TransactionDescription ?? string.Empty, n.TransactionType!.Value, n.Amount ?? 0m)
+                    ? new NotificationTransactionDto(txId, n.TransactionDescription ?? string.Empty, TransactionType.Expense, n.Amount ?? 0m, n.SeriesOccurrences)
                     : null,
                 n.InvitationId is { } invId && invitationStates.TryGetValue(invId, out var state) ? state : null))
             .ToList();

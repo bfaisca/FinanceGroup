@@ -15,6 +15,7 @@ import './assets/styles/main.css'
 import App from './App.vue'
 import { createAppRouter } from './router'
 import { installPrimeVue } from './plugins/primevue'
+import { installOverlayAlign } from './plugins/overlayAlign'
 import { initTheme } from './composables/useTheme'
 import { setupHttpSession } from './services/setupSession'
 
@@ -26,6 +27,7 @@ const router = createAppRouter()
 
 app.use(pinia)
 installPrimeVue(app)
+installOverlayAlign()
 setupHttpSession(router)
 app.use(router)
 

@@ -61,8 +61,8 @@ public sealed class GroupIsolationAndProjectionTests : IDisposable
     /// <summary>
     /// Conta da Ana: snapshot 1000 em 01/11. Individual: despesa paga com a conta em 05/11 (200).
     /// Pagamentos de grupo da Ana: Despesa G1 (500): 01/11 com conta 100 (mesmo dia do snapshot: fora), 10/11 com conta 50 (-50),
-    /// 11/11 sem conta 30 (fora); receita G2: 12/11 com conta 30 (+30).
-    /// Pagamento da Bia na G1 com a conta dela (40) não afeta a Ana. Projetado em 18/11 = 1000 - 200 - 50 + 30 = 780.
+    /// 11/11 sem conta 30 (fora); despesa G2 (200): 12/11 com conta 80 de principal + 5 de juros (-85, D-048).
+    /// Pagamento da Bia na G1 com a conta dela (40) não afeta a Ana. Projetado em 18/11 = 1000 - 200 - 50 - 85 = 665.
     /// </summary>
     [Fact]
     public async Task ProjectedBalance_CountsOnlyGroupPaymentsMadeWithTheUsersOwnAccount()
@@ -84,11 +84,11 @@ public sealed class GroupIsolationAndProjectionTests : IDisposable
         await h.PayGroupTxAsync(ana, group.Id, g1.Id, 50m, Nov(10), account.Id);
         await h.PayGroupTxAsync(ana, group.Id, g1.Id, 30m, Nov(11));
         await h.PayGroupTxAsync(bia, group.Id, g1.Id, 40m, Nov(12), biaAccount.Id);
-        var g2 = await h.CreateGroupTxAsync(bia, group.Id, "G2", 100m, Nov(3), "Income", await h.CategoryIdAsync(bia, "Reembolsos", CategoryType.Income));
-        await h.PayGroupTxAsync(ana, group.Id, g2.Id, 30m, Nov(12), account.Id);
+        var g2 = await h.CreateGroupTxAsync(bia, group.Id, "G2", 200m, Nov(3));
+        await h.PayGroupTxAsync(ana, group.Id, g2.Id, 80m, Nov(12), account.Id, interest: 5m);
 
         var anaAccount = (await ana.GetOk<List<AccountDto>>("/api/v1/accounts")).Single();
-        Assert.Equal(780m, anaAccount.ProjectedBalance);
+        Assert.Equal(665m, anaAccount.ProjectedBalance);
         Assert.Equal(FixedToday, anaAccount.ProjectedAsOf);
         var biaProjected = (await bia.GetOk<List<AccountDto>>("/api/v1/accounts")).Single();
         Assert.Equal(460m, biaProjected.ProjectedBalance);

@@ -4,7 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import { http } from '@/services/http'
 import GroupDashboardTab from '../components/GroupDashboardTab.vue'
 import { NOT_DEBT_NOTICE } from '../dashboard'
-import { makeGroupDashboard, makeGroupDetail } from './fixtures'
+import { makeGroupDashboard, makeGroupDetail, makePaidBy } from './fixtures'
 import { button, mountAt } from './helpers'
 
 const mountTab = (url = '/groups/g1?from=2026-11-01&to=2026-11-30') =>
@@ -22,26 +22,21 @@ describe('GroupDashboardTab', () => {
   })
   afterEach(() => mock.restore())
 
-  it('consulta o período da URL e mostra totais, pago/pendente e saldo', async () => {
+  it('consulta o período da URL e mostra os 4 totais (despesas, pago, pendente, juros) sem receitas', async () => {
     mock.onGet('/groups/g1/dashboard').reply(200, makeGroupDashboard())
     const { wrapper } = await mountTab()
 
     expect(mock.history.get[0]?.params).toEqual({ from: '2026-11-01', to: '2026-11-30' })
-    const text = wrapper.text()
-    for (const label of [
-      'Despesas',
-      'Receitas',
-      'Saldo do período',
-      'Total pago',
-      'Total pendente',
-      'Recebido',
-      'A receber',
-    ]) {
-      expect(text).toContain(label)
-    }
+    const summary = wrapper.find('section[aria-label="Resumo do período"]')
+    const text = summary.text()
+    for (const label of ['Total de despesas', 'Pago', 'Pendente', 'Juros/multa']) expect(text).toContain(label)
     expect(text).toMatch(/R\$\s1\.000,00/)
-    expect(text).toMatch(/R\$\s2\.000,00/)
-    expect(text).toContain('novembro de 2026')
+    expect(text).toMatch(/R\$\s423,50/)
+    expect(text).toMatch(/R\$\s600,00/)
+    expect(text).toMatch(/R\$\s23,50/)
+    const all = wrapper.text()
+    for (const gone of ['Receitas', 'Saldo do período', 'Recebido', 'A receber']) expect(all).not.toContain(gone)
+    expect(all).toContain('novembro de 2026')
     wrapper.unmount()
   })
 
@@ -53,54 +48,78 @@ describe('GroupDashboardTab', () => {
     wrapper.unmount()
   })
 
-  it('exibe DUAS participações separadas, cada uma com título e regra de cálculo próprios', async () => {
+  it('não tem mais "Participação por quem cadastrou"', async () => {
     mock.onGet('/groups/g1/dashboard').reply(200, makeGroupDashboard())
     const { wrapper } = await mountTab()
-
-    const created = wrapper.find('section[aria-labelledby="participation-createdBy-title"]')
-    const paid = wrapper.find('section[aria-labelledby="participation-paidBy-title"]')
-    expect(created.exists()).toBe(true)
-    expect(paid.exists()).toBe(true)
-    expect(created.find('h3').text()).toBe('Participação por quem cadastrou')
-    expect(paid.find('h3').text()).toBe('Participação por quem pagou')
-
-    const createdRule = created.find('[data-testid="participation-rule"]').text()
-    const paidRule = paid.find('[data-testid="participation-rule"]').text()
-    expect(createdRule).toContain('cadastradas por cada participante')
-    expect(createdRule).toContain('tenha ela sido paga ou não')
-    expect(paidRule).toContain('pagamentos e recebimentos efetivamente registrados')
-    expect(paidRule).toContain('Movimentações pendentes não entram')
-    expect(createdRule).not.toBe(paidRule)
-
-    // Cada gráfico tem a própria alternativa em tabela, com dados distintos.
-    expect(created.text()).toContain('Ver dados em tabela')
-    expect(paid.text()).toContain('Ver dados em tabela')
-    expect(created.find('table').text()).toContain('Maria Silva')
-    expect(paid.find('table').text()).toContain('João Souza')
-    expect(paid.find('table').text()).not.toContain('Maria Silva')
+    expect(wrapper.text()).not.toContain('quem cadastrou')
+    expect(wrapper.text()).not.toContain('Participação por')
     wrapper.unmount()
   })
 
-  it('marca ex-membros como "(ex-membro)" nas participações', async () => {
+  it('gráfico Pago × Pendente usa expensesPaid e expensesPending e destaca os juros à parte', async () => {
     mock.onGet('/groups/g1/dashboard').reply(200, makeGroupDashboard())
     const { wrapper } = await mountTab()
 
-    const created = wrapper.find('section[aria-labelledby="participation-createdBy-title"]')
-    expect(created.find('table').text()).toContain('Carlos Antigo (ex-membro)')
-    expect(created.find('[role="img"]').attributes('aria-label')).toContain('Carlos Antigo (ex-membro)')
-    expect(created.find('table').text()).not.toContain('Maria Silva (ex-membro)')
+    const card = wrapper.find('[data-testid="paid-pending-card"]')
+    expect(card.find('h3').text()).toBe('Pago × Pendente')
+    expect(card.find('[data-testid="slice-paid"]').text()).toMatch(/Pago\s*R\$\s423,50/)
+    expect(card.find('[data-testid="slice-pending"]').text()).toMatch(/Pendente\s*R\$\s600,00/)
+    expect(card.find('[data-testid="interest-line"]').text()).toMatch(/R\$\s23,50/)
+    expect(card.find('[role="img"]').attributes('aria-label')).toContain('Pago: R$')
+    expect(card.text()).toContain('Ver dados em tabela')
+    expect(card.find('[data-testid="paid-pending-table"]').text()).toContain('Juros/multa pagos')
     wrapper.unmount()
   })
 
-  it('mostra o aviso fixo de que percentuais não são dívida', async () => {
+  it('"Contas Pagas" lista quem pagou com valor total, percentual e juros em destaque, sem regra longa', async () => {
+    mock.onGet('/groups/g1/dashboard').reply(
+      200,
+      makeGroupDashboard({
+        paidBy: [
+          makePaidBy({ userId: 'u2', name: 'João Souza', paidAmount: 323.5, interestAmount: 23.5, percent: 76.38 }),
+          makePaidBy({
+            userId: 'u9',
+            name: 'Carlos Antigo',
+            status: 'Left',
+            paidAmount: 100,
+            interestAmount: 0,
+            percent: 23.62,
+          }),
+        ],
+      }),
+    )
+    const { wrapper } = await mountTab()
+
+    const card = wrapper.find('[data-testid="paid-by-card"]')
+    expect(card.find('h3').text()).toBe('Contas Pagas')
+    expect(card.text()).toContain('Quanto cada pessoa pagou (inclui juros/multa).')
+    expect(card.text()).not.toContain('Regra de cálculo')
+
+    const items = card.findAll('[data-testid="paid-by-item"]')
+    expect(items).toHaveLength(2)
+    expect(items[0]!.text()).toContain('João Souza')
+    expect(items[0]!.text()).toMatch(/R\$\s323,50/)
+    expect(items[0]!.text()).toContain('76,4%')
+    expect(items[0]!.text()).toMatch(/inclui R\$\s23,50 de juros\/multa/)
+    expect(items[1]!.text()).toContain('Carlos Antigo (ex-membro)')
+    expect(items[1]!.text()).not.toContain('juros')
+
+    const table = card.find('[data-testid="paid-by-table"]')
+    expect(table.text()).toContain('Total pago')
+    expect(table.text()).toMatch(/R\$\s300,00/)
+    expect(card.text()).toContain('Ver dados em tabela')
+    wrapper.unmount()
+  })
+
+  it('mostra o aviso curto de que percentuais não são dívida', async () => {
     mock.onGet('/groups/g1/dashboard').reply(200, makeGroupDashboard())
     const { wrapper } = await mountTab()
 
     const notice = wrapper.find('[data-testid="not-debt-notice"]')
     // Aviso estático: não é anunciado como alerta assertivo.
     expect(notice.find('.p-message').attributes('role')).toBe('note')
-    expect(notice.text()).toContain('indicadores estatísticos')
-    expect(notice.text()).toContain('NÃO representam dívida')
+    expect(notice.text()).toContain('indicadores')
+    expect(notice.text()).toContain('não representam dívida')
     expect(notice.text()).toContain(NOT_DEBT_NOTICE)
     wrapper.unmount()
   })
@@ -109,16 +128,7 @@ describe('GroupDashboardTab', () => {
     mock.onGet('/groups/g1/dashboard').reply(
       200,
       makeGroupDashboard({
-        totals: {
-          expenses: 0,
-          expensesPaid: 0,
-          expensesPending: 0,
-          income: 0,
-          incomeReceived: 0,
-          incomePending: 0,
-          balance: 0,
-        },
-        createdBy: [],
+        totals: { expenses: 0, expensesPaidPrincipal: 0, interestPaid: 0, expensesPaid: 0, expensesPending: 0 },
         paidBy: [],
         monthly: [],
       }),
@@ -139,13 +149,16 @@ describe('GroupDashboardTab', () => {
     wrapper.unmount()
   })
 
-  it('evolução mensal e comparação com o período anterior (base zero vira "—")', async () => {
+  it('evolução mensal (despesas e pago) e comparação com o período anterior (base zero vira "—")', async () => {
     mock.onGet('/groups/g1/dashboard').reply(200, makeGroupDashboard())
     const { wrapper } = await mountTab()
 
-    expect(wrapper.find('[data-testid="group-monthly-table"]').text()).toContain('novembro de 2026')
+    const monthly = wrapper.find('[data-testid="group-monthly-table"]')
+    expect(monthly.text()).toContain('novembro de 2026')
+    expect(monthly.text()).toMatch(/Despesas\s*Pago/)
+    expect(monthly.text()).toMatch(/R\$\s1\.000,00\s*R\$\s423,50/)
     expect(wrapper.find('[data-testid="expenses-change"]').text()).toBe('+25,0%')
-    expect(wrapper.find('[data-testid="income-change"]').text()).toBe('—')
+    expect(wrapper.find('[data-testid="income-change"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('01/10/2026 a 31/10/2026')
     wrapper.unmount()
   })
@@ -158,7 +171,7 @@ describe('GroupDashboardTab', () => {
     mock.onGet('/groups/g1/dashboard').reply(200, makeGroupDashboard())
     await button(wrapper.element, 'Tentar novamente')!.click()
     await flushPromises()
-    expect(wrapper.text()).toContain('Participação por quem cadastrou')
+    expect(wrapper.text()).toContain('Contas Pagas')
     wrapper.unmount()
   })
 

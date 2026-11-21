@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace FinanceApp.API.Controllers;
 
 /// <summary>
-/// Movimentações de um grupo e seus pagamentos por participante (contrato §16.2). Um único registro por movimentação;
+/// Despesas de um grupo e seus pagamentos por participante (contrato §16.2, D-046 a D-049). Um único registro por movimentação;
 /// somente o criador altera/cancela/exclui (403 aos demais); qualquer participante ativo registra o próprio pagamento.
 /// As respostas nunca contêm conta ou cartão.
 /// </summary>
@@ -90,11 +90,21 @@ public sealed class GroupTransactionsController(GroupTransactionService transact
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity, "application/problem+json")]
-    public async Task<ActionResult<GroupTransactionDetailDto>> AddPayment(Guid groupId, Guid txId, [FromBody] AddPaymentRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<GroupTransactionDetailDto>> AddPayment(Guid groupId, Guid txId, [FromBody] GroupPaymentRequest request, CancellationToken cancellationToken)
     {
         var updated = await transactions.AddPaymentAsync(groupId, txId, request, cancellationToken);
         return Created($"/api/v1/groups/{groupId}/transactions/{txId}", updated);
     }
+
+    /// <summary>Somente o próprio pagador edita o seu pagamento (principal, juros, data, conta privada, forma); 403 aos demais.</summary>
+    [HttpPut("{txId:guid}/payments/{paymentId:guid}")]
+    [ProducesResponseType<GroupTransactionDetailDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity, "application/problem+json")]
+    public async Task<ActionResult<GroupTransactionDetailDto>> UpdatePayment(Guid groupId, Guid txId, Guid paymentId, [FromBody] GroupPaymentRequest request, CancellationToken cancellationToken) =>
+        Ok(await transactions.UpdatePaymentAsync(groupId, txId, paymentId, request, cancellationToken));
 
     /// <summary>Somente o próprio pagador remove o seu pagamento (403 aos demais).</summary>
     [HttpDelete("{txId:guid}/payments/{paymentId:guid}")]

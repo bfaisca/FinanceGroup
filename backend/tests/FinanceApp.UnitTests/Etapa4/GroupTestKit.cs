@@ -35,8 +35,8 @@ internal sealed class GroupTestKit : IDisposable
             new CreateInvitationRequestValidator(), NullLogger<GroupInvitationService>.Instance);
         Transactions = new GroupTransactionService(
             Db, Clock, Access,
-            new GroupTransactionListQueryValidator(), new CreateGroupTransactionRequestValidator(),
-            new UpdateGroupTransactionRequestValidator(), new AddPaymentRequestValidator(Clock));
+            new GroupTransactionListQueryValidator(), new CreateGroupTransactionRequestValidator(Clock),
+            new UpdateGroupTransactionRequestValidator(), new GroupPaymentRequestValidator(Clock));
         Dashboard = new GroupDashboardService(Db, Access, new GroupDashboardQueryValidator());
         Notifications = new NotificationService(Db, CurrentUser, Clock, Access, Invitations, new NotificationListQueryValidator());
     }
@@ -102,30 +102,24 @@ internal sealed class GroupTestKit : IDisposable
     public Guid ExpenseCategoryId(string name = "Alimentação") =>
         Db.Categories.AsNoTracking().First(c => c.IsDefault && c.Name == name && c.Type == CategoryType.Expense).Id;
 
-    public Guid IncomeCategoryId(string name = "Salário") =>
-        Db.Categories.AsNoTracking().First(c => c.IsDefault && c.Name == name && c.Type == CategoryType.Income).Id;
-
     public Task<GroupTransactionDetailDto> CreateTxAsync(
-        Guid groupId, string description, decimal amount, DateOnly? date = null, TransactionTypeArg type = TransactionTypeArg.Expense, Guid? categoryId = null) =>
+        Guid groupId, string description, decimal amount, DateOnly? date = null, Guid? categoryId = null, DateOnly? dueDate = null,
+        GroupPaymentRequest? payment = null, GroupRecurrenceRequest? recurrence = null) =>
         Transactions.CreateAsync(
             groupId,
             new CreateGroupTransactionRequest
             {
                 Description = description,
-                Type = type == TransactionTypeArg.Expense ? FinanceApp.Domain.Transactions.TransactionType.Expense : FinanceApp.Domain.Transactions.TransactionType.Income,
                 Amount = amount,
-                CategoryId = categoryId ?? (type == TransactionTypeArg.Expense ? ExpenseCategoryId() : IncomeCategoryId()),
+                CategoryId = categoryId ?? ExpenseCategoryId(),
                 TransactionDate = date ?? Today,
+                DueDate = dueDate,
+                Payment = payment,
+                Recurrence = recurrence,
             },
             CancellationToken.None);
 
-    public Task<GroupTransactionDetailDto> PayAsync(Guid groupId, Guid txId, decimal amount, DateOnly? date = null) =>
+    public Task<GroupTransactionDetailDto> PayAsync(Guid groupId, Guid txId, decimal amount, DateOnly? date = null, decimal? interest = null) =>
         Transactions.AddPaymentAsync(
-            groupId, txId, new AddPaymentRequest { Amount = amount, PaymentDate = date ?? Today }, CancellationToken.None);
-}
-
-internal enum TransactionTypeArg
-{
-    Expense,
-    Income,
+            groupId, txId, new GroupPaymentRequest { Amount = amount, InterestAmount = interest, PaymentDate = date ?? Today }, CancellationToken.None);
 }

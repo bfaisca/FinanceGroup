@@ -3,7 +3,7 @@ import type {
   GroupDetailDto,
   GroupInvitationDto,
   GroupMemberDto,
-  GroupParticipationItemDto,
+  GroupPaidByItemDto,
   GroupSummaryDto,
   GroupTransactionDetailDto,
   GroupTransactionDto,
@@ -114,6 +114,8 @@ export function makeGroupTransaction(partial: Partial<GroupTransactionDto> = {})
     type: 'Expense',
     amount: 200,
     paidAmount: 0,
+    interestPaid: 0,
+    totalPaid: 0,
     remainingAmount: 200,
     status: 'Pending',
     categoryId: 'c-alimentacao',
@@ -126,6 +128,7 @@ export function makeGroupTransaction(partial: Partial<GroupTransactionDto> = {})
     dueDate: '2026-11-10',
     paidAt: null,
     notes: null,
+    series: null,
     createdBy: { userId: 'u1', name: 'Maria Silva' },
     createdAt: '2026-11-05T10:00:00Z',
     updatedAt: '2026-11-05T10:00:00Z',
@@ -138,10 +141,14 @@ export function makeGroupPayment(partial: Partial<GroupTransactionPaymentDto> = 
   return {
     id: 'gp1',
     amount: 50,
+    interestAmount: 0,
+    totalAmount: 50,
     paymentDate: '2026-11-10',
     paymentMethod: 'Pix',
     paidBy: { userId: 'u2', name: 'João Souza' },
     createdAt: '2026-11-10T10:00:00Z',
+    updatedAt: '2026-11-10T10:00:00Z',
+    canEdit: false,
     canRemove: false,
     ...partial,
   }
@@ -153,15 +160,14 @@ export function makeGroupTransactionDetail(
   return { ...makeGroupTransaction(), payments: [], ...partial }
 }
 
-export function makeParticipation(partial: Partial<GroupParticipationItemDto> = {}): GroupParticipationItemDto {
+export function makePaidBy(partial: Partial<GroupPaidByItemDto> = {}): GroupPaidByItemDto {
   return {
-    userId: 'u1',
-    name: 'Maria Silva',
+    userId: 'u2',
+    name: 'João Souza',
     status: 'Active',
-    expenseAmount: 700,
-    expensePercent: 70,
-    incomeAmount: 0,
-    incomePercent: 0,
+    paidAmount: 423.5,
+    interestAmount: 23.5,
+    percent: 100,
     ...partial,
   }
 }
@@ -171,24 +177,12 @@ export function makeGroupDashboard(partial: Partial<GroupDashboardDto> = {}): Gr
     period: { from: '2026-11-01', to: '2026-11-30' },
     totals: {
       expenses: 1000,
-      expensesPaid: 400,
+      expensesPaidPrincipal: 400,
+      interestPaid: 23.5,
+      expensesPaid: 423.5,
       expensesPending: 600,
-      income: 3000,
-      incomeReceived: 3000,
-      incomePending: 0,
-      balance: 2000,
     },
-    createdBy: [
-      makeParticipation({ userId: 'u1', name: 'Maria Silva', expenseAmount: 700, expensePercent: 70 }),
-      makeParticipation({
-        userId: 'u9',
-        name: 'Carlos Antigo',
-        status: 'Left',
-        expenseAmount: 300,
-        expensePercent: 30,
-      }),
-    ],
-    paidBy: [makeParticipation({ userId: 'u2', name: 'João Souza', expenseAmount: 400, expensePercent: 100 })],
+    paidBy: [makePaidBy()],
     expensesByCategory: [
       {
         categoryId: 'c1',
@@ -201,16 +195,14 @@ export function makeGroupDashboard(partial: Partial<GroupDashboardDto> = {}): Gr
       { categoryId: 'c2', name: 'Lazer', color: null, amount: 200, percent: 20, children: [] },
     ],
     monthly: [
-      { month: '2026-10', income: 0, expenses: 0 },
-      { month: '2026-11', income: 3000, expenses: 1000 },
+      { month: '2026-10', expenses: 0, paid: 0 },
+      { month: '2026-11', expenses: 1000, paid: 423.5 },
     ],
     previousPeriod: {
       from: '2026-10-01',
       to: '2026-10-31',
       expenses: 800,
-      income: 0,
       expensesChangePercent: 25,
-      incomeChangePercent: null,
     },
     ...partial,
   }

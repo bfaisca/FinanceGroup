@@ -211,7 +211,7 @@ public sealed class GroupTransactionServiceTests : IDisposable
         var ex = await Assert.ThrowsAsync<FinanceApp.Application.Common.Exceptions.ValidationException>(() => kit.CreateTxAsync(group.Id, "Categoria alheia", 10m, categoryId: mine.Id));
         Assert.True(ex.Errors.ContainsKey("categoryId"));
         await Assert.ThrowsAsync<FinanceApp.Application.Common.Exceptions.ValidationException>(
-            () => kit.CreateTxAsync(group.Id, "Tipo errado", 10m, categoryId: kit.IncomeCategoryId()));
+            () => kit.CreateTxAsync(group.Id, "Tipo errado", 10m, categoryId: kit.Db.Categories.AsNoTracking().First(c => c.IsDefault && c.Type == FinanceApp.Domain.Categories.CategoryType.Income).Id));
     }
 
     [Fact]
@@ -225,23 +225,23 @@ public sealed class GroupTransactionServiceTests : IDisposable
 
         kit.As(member);
         var ex = await Assert.ThrowsAsync<FinanceApp.Application.Common.Exceptions.ValidationException>(() => kit.Transactions.AddPaymentAsync(
-            group.Id, tx.Id, new FinanceApp.Application.Transactions.AddPaymentRequest { Amount = 10m, PaymentDate = kit.Today, AccountId = account.Id }, CancellationToken.None));
+            group.Id, tx.Id, new GroupPaymentRequest { Amount = 10m, PaymentDate = kit.Today, AccountId = account.Id }, CancellationToken.None));
         Assert.True(ex.Errors.ContainsKey("accountId"));
 
         // O próprio dono da conta pode usá-la; ela fica no pagamento, mas nunca aparece no DTO.
         kit.As(owner);
         var paid = await kit.Transactions.AddPaymentAsync(
-            group.Id, tx.Id, new FinanceApp.Application.Transactions.AddPaymentRequest { Amount = 10m, PaymentDate = kit.Today, AccountId = account.Id }, CancellationToken.None);
+            group.Id, tx.Id, new GroupPaymentRequest { Amount = 10m, PaymentDate = kit.Today, AccountId = account.Id }, CancellationToken.None);
         Assert.Equal(account.Id, (await kit.Db.TransactionPayments.AsNoTracking().SingleAsync()).AccountId);
         Assert.DoesNotContain(account.Id.ToString(), System.Text.Json.JsonSerializer.Serialize(paid), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task List_FiltersByCreatorPayerStatusTypeAndSearch()
+    public async Task List_FiltersByCreatorPayerStatusAndSearch()
     {
         var (owner, member, group) = await SetupAsync();
         var rent = await kit.CreateTxAsync(group.Id, "Aluguel", 100m);
-        await kit.CreateTxAsync(group.Id, "Salário extra", 50m, type: TransactionTypeArg.Income);
+        await kit.CreateTxAsync(group.Id, "Luz", 50m);
         kit.As(member);
         var market = await kit.CreateTxAsync(group.Id, "Mercado", 20m);
         await kit.PayAsync(group.Id, rent.Id, 10m);
@@ -250,12 +250,11 @@ public sealed class GroupTransactionServiceTests : IDisposable
         async Task<string[]> Names(GroupTransactionListQuery q) =>
             (await kit.Transactions.ListAsync(group.Id, q, CancellationToken.None)).Items.Select(i => i.Description).OrderBy(n => n, StringComparer.Ordinal).ToArray();
 
-        Assert.Equal(new[] { "Aluguel", "Salário extra" }, await Names(new GroupTransactionListQuery { CreatedByUserId = owner.Id }));
+        Assert.Equal(new[] { "Aluguel", "Luz" }, await Names(new GroupTransactionListQuery { CreatedByUserId = owner.Id }));
         Assert.Equal(new[] { "Aluguel", "Mercado" }, await Names(new GroupTransactionListQuery { PaidByUserId = member.Id }));
         Assert.Equal(new[] { "Mercado" }, await Names(new GroupTransactionListQuery { Status = TransactionStatus.Paid }));
-        Assert.Equal(new[] { "Salário extra" }, await Names(new GroupTransactionListQuery { Type = TransactionType.Income }));
         Assert.Equal(new[] { "Aluguel" }, await Names(new GroupTransactionListQuery { Search = "ALUG" }));
-        Assert.Equal(new[] { "Aluguel" }, await Names(new GroupTransactionListQuery { CreatedByUserId = owner.Id, Status = TransactionStatus.Pending, Type = TransactionType.Expense }));
+        Assert.Equal(new[] { "Aluguel", "Luz" }, await Names(new GroupTransactionListQuery { CreatedByUserId = owner.Id, Status = TransactionStatus.Pending }));
         Assert.Empty(await Names(new GroupTransactionListQuery { PaidByUserId = Guid.NewGuid() }));
     }
 
@@ -274,5 +273,215 @@ public sealed class GroupTransactionServiceTests : IDisposable
         Assert.Equal("Ana", history[0].ActorName);
         Assert.Equal(TransactionAuditAction.Created, history[^1].Action);
         Assert.Equal("Maria", history[^1].ActorName);
+    }
+
+    // ------------------------------------------------------------------ D-046 a D-049
+
+    [Fact]
+    public async Task Create_Income_IsRejectedAs422_AndNothingIsSaved()
+    {
+        var (_, _, group) = await SetupAsync();
+
+        await Assert.ThrowsAsync<DomainException>(() => kit.Transactions.CreateAsync(
+            group.Id,
+            new CreateGroupTransactionRequest { Description = "Salário", Type = TransactionType.Income, Amount = 10m, CategoryId = kit.ExpenseCategoryId(), TransactionDate = kit.Today },
+            CancellationToken.None));
+
+        Assert.Empty(kit.Db.Transactions);
+    }
+
+    [Fact]
+    public async Task Create_WithPayment_RecordsTheCreatorsFirstPayment_PaidWhenItCoversEverything_AndNotifiesTwice()
+    {
+        var (owner, member, group) = await SetupAsync();
+
+        var tx = await kit.CreateTxAsync(
+            group.Id, "Aluguel", 500m, date: kit.Today.AddDays(-20), dueDate: kit.Today.AddDays(-25),
+            payment: new GroupPaymentRequest { PaymentDate = kit.Today.AddDays(-3), InterestAmount = 23.50m });
+
+        Assert.Equal(TransactionStatus.Paid, tx.Status);
+        Assert.Equal((500m, 500m, 23.50m, 523.50m, 0m), (tx.Amount, tx.PaidAmount, tx.InterestPaid, tx.TotalPaid, tx.RemainingAmount));
+        Assert.Equal(kit.Today.AddDays(-25), tx.DueDate);
+        var payment = Assert.Single(tx.Payments);
+        Assert.Equal((owner.Id, 523.50m, kit.Today.AddDays(-3)), (payment.PaidBy.UserId, payment.TotalAmount, payment.PaymentDate));
+        Assert.Equal(kit.Today.AddDays(-3), tx.PaidAt);
+
+        kit.As(member);
+        var notifications = (await kit.Notifications.ListAsync(new FinanceApp.Application.Notifications.NotificationListQuery(), CancellationToken.None)).Items;
+        Assert.Equal(2, notifications.Count(n => n.Type != FinanceApp.Domain.Notifications.NotificationType.GroupInvitationReceived));
+        Assert.Contains(notifications, n => n.Type == FinanceApp.Domain.Notifications.NotificationType.GroupTransactionCreated && n.Transaction!.Amount == 500m);
+        Assert.Contains(notifications, n => n.Type == FinanceApp.Domain.Notifications.NotificationType.GroupPaymentRegistered && n.Transaction!.Amount == 523.50m);
+    }
+
+    [Fact]
+    public async Task Create_WithPartialPayment_StaysPending()
+    {
+        var (_, _, group) = await SetupAsync();
+
+        var tx = await kit.CreateTxAsync(group.Id, "Aluguel", 500m, payment: new GroupPaymentRequest { Amount = 200m, PaymentDate = kit.Today });
+
+        Assert.Equal(TransactionStatus.Pending, tx.Status);
+        Assert.Equal(300m, tx.RemainingAmount);
+    }
+
+    [Fact]
+    public async Task Create_WithPaymentInTheFuture_FailsValidation_AndNothingIsSaved()
+    {
+        var (_, _, group) = await SetupAsync();
+
+        var ex = await Assert.ThrowsAsync<FinanceApp.Application.Common.Exceptions.ValidationException>(
+            () => kit.CreateTxAsync(group.Id, "Aluguel", 500m, payment: new GroupPaymentRequest { PaymentDate = kit.Today.AddDays(1) }));
+
+        Assert.True(ex.Errors.ContainsKey("payment.paymentDate"));
+        Assert.Empty(kit.Db.Transactions);
+    }
+
+    [Fact]
+    public async Task Create_WithPaymentAboveTheAmount_Fails422_AndIsAtomic()
+    {
+        var (_, _, group) = await SetupAsync();
+
+        await Assert.ThrowsAsync<DomainException>(
+            () => kit.CreateTxAsync(group.Id, "Aluguel", 500m, payment: new GroupPaymentRequest { Amount = 500.01m, PaymentDate = kit.Today }));
+
+        Assert.Empty(kit.Db.Transactions);
+        Assert.DoesNotContain(kit.Db.Notifications.AsNoTracking(), n => n.TransactionId != null);
+    }
+
+    [Fact]
+    public async Task Create_Recurrent_MonthlyEndOfMonth_ShiftsDueDateByTheSameDays_AndPaymentOnlyInTheFirst()
+    {
+        var (_, member, group) = await SetupAsync();
+        kit.Clock.SetToday(new DateOnly(2026, 1, 31));
+
+        var first = await kit.CreateTxAsync(
+            group.Id, "Internet", 100m, date: new DateOnly(2026, 1, 31), dueDate: new DateOnly(2026, 2, 5),
+            payment: new GroupPaymentRequest { PaymentDate = new DateOnly(2026, 1, 31) },
+            recurrence: new GroupRecurrenceRequest { Frequency = FinanceApp.Domain.Recurrences.RecurrenceFrequency.Monthly, Occurrences = 3 });
+
+        Assert.Equal(1, first.Series!.Number);
+        Assert.Equal(3, first.Series.Total);
+        var all = (await kit.Transactions.ListAsync(group.Id, new GroupTransactionListQuery { Sort = "transactionDate" }, CancellationToken.None)).Items;
+        Assert.Equal(
+            new[] { "2026-01-31", "2026-02-28", "2026-03-31" },
+            all.Select(t => t.TransactionDate.ToString("yyyy-MM-dd")).ToArray());
+        // 31/jan → vencimento 05/fev (+5 dias); 28/fev → 05/mar; 31/mar → 05/abr.
+        Assert.Equal(
+            new[] { "2026-02-05", "2026-03-05", "2026-04-05" },
+            all.Select(t => t.DueDate!.Value.ToString("yyyy-MM-dd")).ToArray());
+        Assert.Equal(new[] { 1, 2, 3 }, all.Select(t => t.Series!.Number).ToArray());
+        Assert.All(all, t => Assert.Equal((first.Series.Id, 3, 100m), (t.Series!.Id, t.Series.Total, t.Amount)));
+        Assert.Equal(new[] { TransactionStatus.Paid, TransactionStatus.Pending, TransactionStatus.Pending }, all.Select(t => t.Status).ToArray());
+        Assert.Equal(1, await kit.Db.TransactionPayments.CountAsync());
+        Assert.Equal(1, await kit.Db.GroupTransactionSeries.CountAsync());
+
+        // UMA notificação de criação da série (+ a do pagamento).
+        kit.As(member);
+        var notifications = (await kit.Notifications.ListAsync(new FinanceApp.Application.Notifications.NotificationListQuery(), CancellationToken.None)).Items;
+        var created = Assert.Single(notifications, n => n.Type == FinanceApp.Domain.Notifications.NotificationType.GroupTransactionCreated);
+        Assert.Equal(3, created.Transaction!.SeriesOccurrences);
+        Assert.Single(notifications, n => n.Type == FinanceApp.Domain.Notifications.NotificationType.GroupPaymentRegistered);
+    }
+
+    [Fact]
+    public async Task Create_Recurrent_OccurrencesAreIndependent_EditPayCancelDelete()
+    {
+        var (_, _, group) = await SetupAsync();
+        var first = await kit.CreateTxAsync(
+            group.Id, "Luz", 80m, recurrence: new GroupRecurrenceRequest { Frequency = FinanceApp.Domain.Recurrences.RecurrenceFrequency.Weekly, Occurrences = 3 });
+        var items = (await kit.Transactions.ListAsync(group.Id, new GroupTransactionListQuery { Sort = "transactionDate" }, CancellationToken.None)).Items;
+
+        await kit.Transactions.UpdateAsync(group.Id, items[1].Id, new UpdateGroupTransactionRequest
+        {
+            Description = "Água (mês com consumo alto)", Amount = 95m, CategoryId = first.CategoryId, TransactionDate = items[1].TransactionDate,
+        }, CancellationToken.None);
+        await kit.PayAsync(group.Id, items[0].Id, 80m);
+        await kit.Transactions.CancelAsync(group.Id, items[2].Id, CancellationToken.None);
+
+        var after = (await kit.Transactions.ListAsync(group.Id, new GroupTransactionListQuery { Sort = "transactionDate" }, CancellationToken.None)).Items;
+        Assert.Equal((TransactionStatus.Paid, 80m), (after[0].Status, after[0].Amount));
+        Assert.Equal((TransactionStatus.Pending, 95m), (after[1].Status, after[1].Amount));
+        Assert.Equal(TransactionStatus.Canceled, after[2].Status);
+        Assert.All(after, t => Assert.Equal(3, t.Series!.Total));
+
+        await kit.Transactions.DeleteAsync(group.Id, items[1].Id, CancellationToken.None);
+        var remaining = (await kit.Transactions.ListAsync(group.Id, new GroupTransactionListQuery(), CancellationToken.None)).Items;
+        Assert.Equal(2, remaining.Count);
+        Assert.All(remaining, t => Assert.Equal(3, t.Series!.Total)); // o total original é preservado
+    }
+
+    [Fact]
+    public async Task Create_Recurrent_DailyCustomAndOutOfRangeOccurrences_FailValidation()
+    {
+        var (_, _, group) = await SetupAsync();
+
+        foreach (var recurrence in new[]
+                 {
+                     new GroupRecurrenceRequest { Frequency = FinanceApp.Domain.Recurrences.RecurrenceFrequency.Daily, Occurrences = 3 },
+                     new GroupRecurrenceRequest { Frequency = FinanceApp.Domain.Recurrences.RecurrenceFrequency.Custom, Occurrences = 3 },
+                     new GroupRecurrenceRequest { Frequency = FinanceApp.Domain.Recurrences.RecurrenceFrequency.Monthly, Occurrences = 1 },
+                     new GroupRecurrenceRequest { Frequency = FinanceApp.Domain.Recurrences.RecurrenceFrequency.Monthly, Occurrences = 61 },
+                     new GroupRecurrenceRequest { Occurrences = 3 },
+                 })
+        {
+            await Assert.ThrowsAsync<FinanceApp.Application.Common.Exceptions.ValidationException>(
+                () => kit.CreateTxAsync(group.Id, "x", 10m, recurrence: recurrence));
+        }
+
+        Assert.Empty(kit.Db.Transactions);
+    }
+
+    [Fact]
+    public async Task UpdatePayment_ByThePayer_RecalculatesAndNotifiesNobody_OthersGet403()
+    {
+        var (owner, member, group) = await SetupAsync();
+        var tx = await kit.CreateTxAsync(group.Id, "Aluguel", 500m);
+        kit.As(member);
+        var paid = await kit.PayAsync(group.Id, tx.Id, 500m, interest: 23.50m);
+        var payment = Assert.Single(paid.Payments);
+        Assert.True(payment.CanEdit);
+        var notificationsBefore = await kit.Db.Notifications.CountAsync();
+
+        var updated = await kit.Transactions.UpdatePaymentAsync(
+            group.Id, tx.Id, payment.Id, new GroupPaymentRequest { Amount = 400m, InterestAmount = 10m, PaymentDate = kit.Today }, CancellationToken.None);
+
+        Assert.Equal((TransactionStatus.Pending, 400m, 10m, 410m, 100m), (updated.Status, updated.PaidAmount, updated.InterestPaid, updated.TotalPaid, updated.RemainingAmount));
+        Assert.Equal(410m, updated.Payments[0].TotalAmount);
+        Assert.Equal(notificationsBefore, await kit.Db.Notifications.CountAsync());
+
+        kit.As(owner);
+        await Assert.ThrowsAsync<ForbiddenException>(() => kit.Transactions.UpdatePaymentAsync(
+            group.Id, tx.Id, payment.Id, new GroupPaymentRequest { Amount = 1m, PaymentDate = kit.Today }, CancellationToken.None));
+        var asOwner = await kit.Transactions.GetAsync(group.Id, tx.Id, CancellationToken.None);
+        Assert.False(asOwner.Payments[0].CanEdit);
+        Assert.False(asOwner.Payments[0].CanRemove);
+    }
+
+    [Fact]
+    public async Task UpdatePayment_InArchivedGroupOrCanceledTransaction_Fails422()
+    {
+        var (owner, _, group) = await SetupAsync();
+        var tx = await kit.CreateTxAsync(group.Id, "Aluguel", 100m);
+        var payment = Assert.Single((await kit.PayAsync(group.Id, tx.Id, 40m)).Payments);
+        var request = new GroupPaymentRequest { Amount = 50m, PaymentDate = kit.Today };
+
+        await kit.Transactions.CancelAsync(group.Id, tx.Id, CancellationToken.None);
+        await Assert.ThrowsAsync<DomainException>(() => kit.Transactions.UpdatePaymentAsync(group.Id, tx.Id, payment.Id, request, CancellationToken.None));
+        await kit.Transactions.ReopenAsync(group.Id, tx.Id, CancellationToken.None);
+
+        await kit.Groups.ArchiveAsync(group.Id, CancellationToken.None);
+        await Assert.ThrowsAsync<DomainException>(() => kit.Transactions.UpdatePaymentAsync(group.Id, tx.Id, payment.Id, request, CancellationToken.None));
+        Assert.NotNull(owner);
+    }
+
+    [Fact]
+    public async Task AddPayment_WithInterest_AndPaymentFromAnotherGroupTransaction_Is404()
+    {
+        var (_, _, group) = await SetupAsync();
+        var tx = await kit.CreateTxAsync(group.Id, "Aluguel", 100m);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => kit.Transactions.UpdatePaymentAsync(
+            group.Id, tx.Id, Guid.NewGuid(), new GroupPaymentRequest { Amount = 1m, PaymentDate = kit.Today }, CancellationToken.None));
+        await Assert.ThrowsAsync<FinanceApp.Application.Common.Exceptions.ValidationException>(() => kit.PayAsync(group.Id, tx.Id, 10m, interest: -1m));
     }
 }

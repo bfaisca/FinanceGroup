@@ -41,6 +41,7 @@ export const HISTORY_ACTION_LABELS: Record<TransactionHistoryAction, string> = {
   Created: 'Movimentação criada',
   Updated: 'Movimentação alterada',
   PaymentAdded: 'Pagamento registrado',
+  PaymentUpdated: 'Pagamento alterado',
   PaymentRemoved: 'Pagamento removido',
   Canceled: 'Movimentação cancelada',
   Reopened: 'Movimentação reaberta',

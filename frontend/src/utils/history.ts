@@ -15,14 +15,24 @@ const FIELD_LABELS: Record<string, string> = {
   transactionDate: 'Data da movimentação',
   dueDate: 'Vencimento',
   paidAt: 'Data de quitação',
+  interest: 'Juros/multa',
   notes: 'Observações',
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/
 const NUMERIC = /^-?\d+(?:\.\d+)?$/
-// O backend registra pagamentos como "200.00 (2026-11-18)" (valor e data do pagamento).
-const PAYMENT_VALUE = /^(-?\d+(?:\.\d+)?) \((\d{4}-\d{2}-\d{2})\)$/
+// O backend registra pagamentos como "200.00 (2026-11-18)" (valor e data do pagamento); com juros/multa
+// (D-048) o valor pode vir como "200.00 + 23.50 (2026-11-18)" — o formato exato não está no contrato,
+// então qualquer outro texto é exibido como veio.
+const PAYMENT_VALUE = /^(-?\d+(?:\.\d+)?)(?: \+ (\d+(?:\.\d+)?))? \((\d{4}-\d{2}-\d{2})\)$/
+
+function formatPaymentValue(raw: string): string {
+  const match = PAYMENT_VALUE.exec(raw)
+  if (!match) return raw
+  const interest = match[2] ? ` + ${formatCurrency(Number(match[2]))} de juros/multa` : ''
+  return `${formatCurrency(Number(match[1]))}${interest} em ${formatDate(match[3])}`
+}
 
 /** Resolvedores opcionais de identificadores (ex.: id de categoria → nome). */
 export interface HistoryResolvers {
@@ -70,9 +80,11 @@ export function describeHistoryEntry(entry: TransactionHistoryEntryDto, resolver
   }
 
   if (entry.field === 'payment') {
+    if (entry.action === 'PaymentUpdated' && entry.oldValue && entry.newValue) {
+      return `${title}: de ${formatPaymentValue(entry.oldValue)} para ${formatPaymentValue(entry.newValue)}`
+    }
     const raw = entry.newValue ?? entry.oldValue ?? ''
-    const match = PAYMENT_VALUE.exec(raw)
-    return match ? `${title}: ${formatCurrency(Number(match[1]))} em ${formatDate(match[2])}` : title
+    return PAYMENT_VALUE.test(raw) ? `${title}: ${formatPaymentValue(raw)}` : title
   }
 
   const label = historyFieldLabel(entry.field)

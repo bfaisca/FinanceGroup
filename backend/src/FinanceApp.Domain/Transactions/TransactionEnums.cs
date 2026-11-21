@@ -36,6 +36,7 @@ public enum TransactionAuditAction
     Created,
     Updated,
     PaymentAdded,
+    PaymentUpdated,
     PaymentRemoved,
     Canceled,
     Reopened,

@@ -7,6 +7,7 @@ import GroupTransactionsTab from '../components/GroupTransactionsTab.vue'
 import {
   makeGroupDetail,
   makeGroupMember,
+  makeGroupPayment,
   makeGroupTransaction,
   makeGroupTransactionDetail,
   makeMemberViewDetail,
@@ -40,7 +41,7 @@ describe('GroupTransactionsTab', () => {
   it('lê os filtros da URL (incluindo quem cadastrou/pagou) e envia os nomes do contrato', async () => {
     mock.onGet('/groups/g1/transactions').reply(200, pageOf())
     const { wrapper } = await mountTab(
-      '/groups/g1?tab=transactions&from=2026-11-01&to=2026-11-30&type=Expense&status=Overdue&categoryId=c1&createdBy=u1&paidBy=u2&search=luz&page=2&sort=-amount',
+      '/groups/g1?tab=transactions&from=2026-11-01&to=2026-11-30&type=Income&status=Overdue&categoryId=c1&createdBy=u1&paidBy=u2&search=luz&page=2&sort=-amount',
     )
 
     expect(listRequests()[0]?.params).toEqual({
@@ -49,7 +50,6 @@ describe('GroupTransactionsTab', () => {
       sort: '-amount',
       from: '2026-11-01',
       to: '2026-11-30',
-      type: 'Expense',
       status: 'Overdue',
       categoryId: 'c1',
       createdByUserId: 'u1',
@@ -80,7 +80,7 @@ describe('GroupTransactionsTab', () => {
     const { wrapper } = await mountTab()
 
     const selects = wrapper.findAll('.p-select')
-    expect(selects.length).toBeGreaterThanOrEqual(6)
+    expect(selects.length).toBeGreaterThanOrEqual(5)
     for (const select of selects) {
       expect(select.text().trim().length, select.html()).toBeGreaterThan(0)
     }
@@ -195,24 +195,23 @@ describe('GroupTransactionsTab', () => {
         remainingAmount: 120,
         permissions: { canEdit: true, canCancel: true, canDelete: false, canPay: true },
         payments: [
-          {
+          makeGroupPayment({
             id: 'p-own',
             amount: 30,
+            totalAmount: 30,
             paymentDate: '2026-11-10',
-            paymentMethod: 'Pix',
             paidBy: { userId: 'u1', name: 'Maria Silva' },
-            createdAt: '2026-11-10T10:00:00Z',
+            canEdit: true,
             canRemove: true,
-          },
-          {
+          }),
+          makeGroupPayment({
             id: 'p-other',
             amount: 50,
+            totalAmount: 50,
             paymentDate: '2026-11-11',
             paymentMethod: null,
             paidBy: { userId: 'u2', name: 'João Souza' },
-            createdAt: '2026-11-11T10:00:00Z',
-            canRemove: false,
-          },
+          }),
         ],
       })
       const { wrapper } = await openDetail(detail)
@@ -235,21 +234,23 @@ describe('GroupTransactionsTab', () => {
         paidAmount: 30,
         remainingAmount: 170,
         payments: [
-          {
+          makeGroupPayment({
             id: 'p-own',
             amount: 30,
-            paymentDate: '2026-11-10',
+            totalAmount: 30,
             paymentMethod: null,
             paidBy: { userId: 'u1', name: 'Maria Silva' },
-            createdAt: '2026-11-10T10:00:00Z',
+            canEdit: true,
             canRemove: true,
-          },
+          }),
         ],
       })
       mock.onDelete('/groups/g1/transactions/gt1/payments/p-own').reply(200, { ...detail, payments: [], paidAmount: 0 })
       const { wrapper } = await openDetail(detail)
 
-      document.body.querySelector<HTMLButtonElement>('.gtx-drawer__payments tbody button')!.click()
+      document.body
+        .querySelector<HTMLButtonElement>('.gtx-drawer__payments tbody button[aria-label^="Remover"]')!
+        .click()
       await flushPromises()
       expect(mock.history.delete).toHaveLength(0)
       expect(document.body.textContent).toContain('Remover o seu pagamento')
@@ -295,7 +296,7 @@ describe('GroupTransactionsTab', () => {
       set('#gpay-amount', '250,00')
       form().dispatchEvent(new Event('submit'))
       await flushPromises()
-      expect(body.textContent).toContain('O valor não pode ser maior que o restante')
+      expect(body.textContent).toContain('O valor da conta não pode ser maior que o restante')
       expect(mock.history.post).toHaveLength(0)
 
       set('#gpay-amount', '50,00')

@@ -20,11 +20,11 @@ defineProps<{
     <div class="table-scroll">
       <table class="simple-table" data-testid="group-compare-table">
         <caption class="sr-only">
-          Comparação de despesas e receitas com o período anterior
+          Comparação de despesas com o período anterior
         </caption>
         <thead>
           <tr>
-            <th scope="col">Tipo</th>
+            <th scope="col">Indicador</th>
             <th scope="col" class="num">Período atual</th>
             <th scope="col" class="num">Período anterior</th>
             <th scope="col" class="num">Variação</th>
@@ -36,12 +36,6 @@ defineProps<{
             <td class="num money">{{ formatCurrency(totals.expenses) }}</td>
             <td class="num money">{{ formatCurrency(previous.expenses) }}</td>
             <td class="num" data-testid="expenses-change">{{ formatChange(previous.expensesChangePercent) }}</td>
-          </tr>
-          <tr>
-            <th scope="row">Receitas</th>
-            <td class="num money">{{ formatCurrency(totals.income) }}</td>
-            <td class="num money">{{ formatCurrency(previous.income) }}</td>
-            <td class="num" data-testid="income-change">{{ formatChange(previous.incomeChangePercent) }}</td>
           </tr>
         </tbody>
       </table>

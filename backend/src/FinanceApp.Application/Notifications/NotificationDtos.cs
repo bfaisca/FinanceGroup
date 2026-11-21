@@ -11,10 +11,11 @@ public sealed record NotificationGroupDto(Guid Id, string Name);
 public sealed record NotificationActorDto(Guid UserId, string Name);
 
 /// <summary>
-/// Instantâneo da movimentação. <c>Amount</c>: valor da movimentação em <c>GroupTransactionCreated</c> e valor do
-/// pagamento em <c>GroupPaymentRegistered</c>.
+/// Instantâneo da despesa. <c>Amount</c>: valor da despesa em <c>GroupTransactionCreated</c> e valor TOTAL do pagamento
+/// (principal + juros) em <c>GroupPaymentRegistered</c>. <c>Type</c> é sempre <c>Expense</c> (D-046). <c>SeriesOccurrences</c>:
+/// total de ocorrências quando a criação é de uma série recorrente (uma notificação por série, D-049).
 /// </summary>
-public sealed record NotificationTransactionDto(Guid Id, string Description, TransactionType Type, decimal Amount);
+public sealed record NotificationTransactionDto(Guid Id, string Description, TransactionType Type, decimal Amount, int? SeriesOccurrences);
 
 /// <summary>Estado do convite DERIVADO na consulta (D-043); <c>CanRespond</c> habilita aceitar/recusar.</summary>
 public sealed record NotificationInvitationDto(Guid Id, GroupInvitationStatus Status, DateTimeOffset ExpiresAt, bool CanRespond);

@@ -13,6 +13,7 @@ import type { GroupInvitationStatus } from '@/types/api'
 import { formatDate, formatDateTime } from '@/utils/format'
 import { toAppError } from '@/utils/problem'
 import { useResource } from '../composables'
+import { useGroupRefreshHandler } from '../refresh'
 import { INVITATION_STATUS_PRESENTATION, INVITATION_STATUSES } from '../labels'
 import { groupService } from '../services/groupService'
 import type { GroupDetailDto, GroupInvitationDto } from '../types'
@@ -27,6 +28,11 @@ const list = useResource(
   () => groupService.listInvitations(props.group.id, statusFilter.value ?? undefined),
   () => `${props.group.id}|${statusFilter.value ?? ''}`,
 )
+
+useGroupRefreshHandler(async () => {
+  await list.reload()
+  return list.error.value === null
+})
 
 const invitations = computed(() => list.data.value ?? [])
 const statusOptions = [

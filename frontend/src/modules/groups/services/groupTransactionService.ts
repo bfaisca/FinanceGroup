@@ -1,11 +1,11 @@
 import { http } from '@/services/http'
 import type { PagedResult, Uuid } from '@/types/api'
 import type {
-  CreateGroupPaymentRequest,
   CreateGroupTransactionRequest,
   GroupTransactionDetailDto,
   GroupTransactionDto,
   GroupTransactionHistoryEntryDto,
+  GroupPaymentRequest,
   GroupTransactionListQuery,
   UpdateGroupTransactionRequest,
 } from '../types'
@@ -69,9 +69,22 @@ export const groupTransactionService = {
     return data
   },
 
-  async addPayment(groupId: Uuid, id: Uuid, request: CreateGroupPaymentRequest): Promise<GroupTransactionDetailDto> {
+  async addPayment(groupId: Uuid, id: Uuid, request: GroupPaymentRequest): Promise<GroupTransactionDetailDto> {
     const { data } = await http.post<GroupTransactionDetailDto>(
       `/groups/${groupId}/transactions/${id}/payments`,
+      request,
+    )
+    return data
+  },
+
+  async updatePayment(
+    groupId: Uuid,
+    id: Uuid,
+    paymentId: Uuid,
+    request: GroupPaymentRequest,
+  ): Promise<GroupTransactionDetailDto> {
+    const { data } = await http.put<GroupTransactionDetailDto>(
+      `/groups/${groupId}/transactions/${id}/payments/${paymentId}`,
       request,
     )
     return data

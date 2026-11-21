@@ -1,7 +1,7 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
-import type { DateOnlyString, TransactionStatus, TransactionType, Uuid } from '@/types/api'
+import type { DateOnlyString, TransactionStatus, Uuid } from '@/types/api'
 import { parseDateOnly } from '@/utils/format'
-import { TRANSACTION_STATUSES, TRANSACTION_TYPES } from '@/utils/labels'
+import { TRANSACTION_STATUSES } from '@/utils/labels'
 import { DEFAULT_PAGE_SIZE, DEFAULT_SORT, MAX_PAGE_SIZE, SORT_FIELDS } from '@/modules/transactions/filters'
 import type { GroupTransactionListQuery } from './types'
 
@@ -9,7 +9,6 @@ import type { GroupTransactionListQuery } from './types'
 export interface GroupTransactionFilters {
   from?: DateOnlyString
   to?: DateOnlyString
-  type?: TransactionType
   categoryId?: Uuid
   status?: TransactionStatus
   search?: string
@@ -53,8 +52,6 @@ export function parseGroupTransactionFilters(query: LocationQuery): GroupTransac
   const to = single(query.to)
   if (to && parseDateOnly(to)) filters.to = to
 
-  const type = single(query.type)
-  if (type && (TRANSACTION_TYPES as string[]).includes(type)) filters.type = type as TransactionType
   const status = single(query.status)
   if (status && (TRANSACTION_STATUSES as string[]).includes(status)) filters.status = status as TransactionStatus
 
@@ -79,7 +76,6 @@ export function toGroupRouteQuery(filters: GroupTransactionFilters): Record<stri
   const query: Record<string, string> = {}
   if (filters.from) query.from = filters.from
   if (filters.to) query.to = filters.to
-  if (filters.type) query.type = filters.type
   if (filters.status) query.status = filters.status
   if (filters.categoryId) query.categoryId = filters.categoryId
   if (filters.createdByUserId) query.createdBy = filters.createdByUserId
@@ -106,7 +102,6 @@ export function toGroupListQuery(filters: GroupTransactionFilters): GroupTransac
   const query: GroupTransactionListQuery = { page: filters.page, pageSize: filters.pageSize, sort: filters.sort }
   if (filters.from) query.from = filters.from
   if (filters.to) query.to = filters.to
-  if (filters.type) query.type = filters.type
   if (filters.status) query.status = filters.status
   if (filters.categoryId) query.categoryId = filters.categoryId
   if (filters.createdByUserId) query.createdByUserId = filters.createdByUserId
@@ -120,7 +115,6 @@ export function countActiveGroupFilters(filters: GroupTransactionFilters): numbe
   return [
     filters.from,
     filters.to,
-    filters.type,
     filters.status,
     filters.categoryId,
     filters.createdByUserId,

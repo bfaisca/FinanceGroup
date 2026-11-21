@@ -93,18 +93,38 @@ public sealed class NotificationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task IncomeReceipt_CarriesTheIncomeType()
+    public async Task PaymentWithInterest_NotifiesTheTotalAmount_PrincipalPlusInterest()
     {
         var (maria, ana, _, groupId) = await ThreeMembersAsync();
         kit.As(maria);
-        var tx = await kit.CreateTxAsync(groupId, "Freela", 500m, type: TransactionTypeArg.Income);
+        var tx = await kit.CreateTxAsync(groupId, "Aluguel", 500m);
         await ClearNotificationsAsync();
         kit.As(maria);
 
-        await kit.PayAsync(groupId, tx.Id, 100m);
+        await kit.PayAsync(groupId, tx.Id, 500m, interest: 23.50m);
 
         var item = Assert.Single((await ListAsAsync(ana)).Items);
-        Assert.Equal(TransactionType.Income, item.Transaction!.Type);
+        Assert.Equal(NotificationType.GroupPaymentRegistered, item.Type);
+        Assert.Equal((TransactionType.Expense, 523.50m, (int?)null), (item.Transaction!.Type, item.Transaction.Amount, item.Transaction.SeriesOccurrences));
+    }
+
+    [Fact]
+    public async Task RecurrentCreation_NotifiesOncePerSeries_WithTheOccurrences()
+    {
+        var (maria, ana, bia, groupId) = await ThreeMembersAsync();
+        kit.As(maria);
+
+        await kit.CreateTxAsync(
+            groupId, "Internet", 100m,
+            recurrence: new FinanceApp.Application.Groups.GroupRecurrenceRequest { Frequency = FinanceApp.Domain.Recurrences.RecurrenceFrequency.Monthly, Occurrences = 6 });
+
+        foreach (var recipient in new[] { ana, bia })
+        {
+            var item = Assert.Single((await ListAsAsync(recipient)).Items);
+            Assert.Equal((NotificationType.GroupTransactionCreated, 100m, 6), (item.Type, item.Transaction!.Amount, item.Transaction.SeriesOccurrences));
+        }
+
+        Assert.Empty((await ListAsAsync(maria)).Items);
     }
 
     [Fact]

@@ -124,11 +124,11 @@ describe('serviços de grupos', () => {
       mock.onGet(`${base}/history`).reply(200, [])
       mock.onPost(`${base}/payments`).reply(201, {})
       mock.onDelete(`${base}/payments/p1`).reply(200, {})
+      mock.onPut(`${base}/payments/p1`).reply(200, {})
 
       await groupTransactionService.get('g1', 't1')
       await groupTransactionService.create('g1', {
         description: 'x',
-        type: 'Expense',
         amount: 1,
         categoryId: 'c',
         transactionDate: '2026-11-01',
@@ -144,10 +144,20 @@ describe('serviços de grupos', () => {
       await groupTransactionService.reopen('g1', 't1')
       await groupTransactionService.history('g1', 't1')
       await groupTransactionService.addPayment('g1', 't1', { amount: 10, paymentDate: '2026-11-10', accountId: 'a1' })
+      await groupTransactionService.updatePayment('g1', 't1', 'p1', {
+        amount: 10,
+        interestAmount: 2.5,
+        paymentDate: '2026-11-10',
+      })
       await groupTransactionService.removePayment('g1', 't1', 'p1')
 
       const payment = mock.history.post.find((r) => r.url === `${base}/payments`)
       expect(JSON.parse(payment?.data)).toEqual({ amount: 10, paymentDate: '2026-11-10', accountId: 'a1' })
+      expect(JSON.parse(mock.history.put.find((r) => r.url === `${base}/payments/p1`)?.data)).toEqual({
+        amount: 10,
+        interestAmount: 2.5,
+        paymentDate: '2026-11-10',
+      })
       expect(mock.history.delete).toHaveLength(2)
     })
   })

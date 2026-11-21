@@ -7,7 +7,7 @@ import { useClockStore } from '@/stores/clock'
 import { toAppError } from '@/utils/problem'
 import { groupTransactionService } from '../services/groupTransactionService'
 import type { CreateGroupTransactionRequest, GroupTransactionDetailDto, UpdateGroupTransactionRequest } from '../types'
-import { GROUP_TRANSACTION_FORM_FIELDS } from '../validation'
+import { GROUP_TRANSACTION_FORM_FIELDS, mapGroupServerErrors } from '../validation'
 import GroupTransactionForm from './GroupTransactionForm.vue'
 
 const props = withDefaults(defineProps<{ groupId: string; transaction?: GroupTransactionDetailDto | null }>(), {
@@ -50,7 +50,11 @@ async function onSubmit(request: CreateGroupTransactionRequest | UpdateGroupTran
     visible.value = false
     toast.add({
       severity: 'success',
-      summary: isEdit.value ? 'Movimentação atualizada' : 'Movimentação criada',
+      summary: isEdit.value
+        ? 'Movimentação atualizada'
+        : saved.series
+          ? `${saved.series.total} contas criadas`
+          : 'Movimentação criada',
       life: 3500,
     })
     emit('saved', saved)
@@ -58,7 +62,8 @@ async function onSubmit(request: CreateGroupTransactionRequest | UpdateGroupTran
     const appError = toAppError(error)
     // `errors` (400) vão para os campos; `detail`/`title` (422 etc.) para o aviso do formulário.
     fieldErrors.value = appError.fieldErrors
-    const mapped = (GROUP_TRANSACTION_FORM_FIELDS as readonly string[]).some((field) => appError.fieldErrors[field])
+    const serverErrors = mapGroupServerErrors(appError.fieldErrors)
+    const mapped = (GROUP_TRANSACTION_FORM_FIELDS as readonly string[]).some((field) => serverErrors[field])
     errorMessage.value = mapped ? null : appError.message
   } finally {
     loading.value = false

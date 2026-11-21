@@ -47,38 +47,42 @@ public class GroupDashboardMathTests
     }
 
     [Fact]
-    public void BuildParticipation_PercentagesAreOverTheSameTypeTotal_OrderedByTotalThenName()
+    public void Totals_PaidIsPrincipalPlusInterest_PendingIsOriginalMinusPrincipal()
     {
-        var amounts = new List<ParticipationAmount>
-        {
-            new(Ana, Expense: 70m, Income: 0m),
-            new(Bia, Expense: 20m, Income: 500m),
-            new(Caio, Expense: 10m, Income: 0m),
-        };
+        var totals = GroupDashboardMath.Totals(expenses: 500m, paidPrincipal: 200m, interest: 23.50m);
 
-        var items = GroupDashboardMath.BuildParticipation(amounts, Names, Statuses);
-
-        Assert.Equal(new[] { "Bia", "Ana", "Caio" }, items.Select(i => i.Name).ToArray());
-        var ana = items.Single(i => i.UserId == Ana);
-        Assert.Equal(70m, ana.ExpensePercent);
-        Assert.Equal(0m, ana.IncomePercent);
-        var bia = items.Single(i => i.UserId == Bia);
-        Assert.Equal(20m, bia.ExpensePercent);
-        Assert.Equal(100m, bia.IncomePercent);
-        Assert.Equal(100m, items.Sum(i => i.ExpensePercent));
+        Assert.Equal(new GroupDashboardTotalsDto(500m, 200m, 23.50m, 223.50m, 300m), totals);
     }
 
     [Fact]
-    public void BuildParticipation_ExposesMembershipStatus_DefaultingToLeft_AndSkipsZeroRows()
+    public void Totals_PendingNeverGoesNegative() =>
+        Assert.Equal(0m, GroupDashboardMath.Totals(100m, 120m, 0m).ExpensesPending);
+
+    [Fact]
+    public void BuildPaidBy_PercentagesAreOverThePaidTotal_OrderedByAmountThenName()
     {
-        var amounts = new List<ParticipationAmount>
+        var amounts = new List<PayerAmount>
         {
-            new(Ana, 10m, 0m),
-            new(Bia, 10m, 0m),
-            new(Caio, 0m, 0m),
+            new(Ana, Principal: 60m, Interest: 10m),
+            new(Bia, Principal: 20m, Interest: 0m),
+            new(Caio, Principal: 10m, Interest: 0m),
         };
 
-        var items = GroupDashboardMath.BuildParticipation(amounts, Names, Statuses);
+        var items = GroupDashboardMath.BuildPaidBy(amounts, Names, Statuses);
+
+        Assert.Equal(new[] { "Ana", "Bia", "Caio" }, items.Select(i => i.Name).ToArray());
+        Assert.Equal((70m, 10m, 70m), (items[0].PaidAmount, items[0].InterestAmount, items[0].Percent));
+        Assert.Equal(20m, items[1].Percent);
+        Assert.Equal(10m, items[2].Percent);
+        Assert.Equal(100m, items.Sum(i => i.Percent));
+    }
+
+    [Fact]
+    public void BuildPaidBy_ExposesMembershipStatus_DefaultingToLeft_AndSkipsZeroRows()
+    {
+        var amounts = new List<PayerAmount> { new(Ana, 10m, 0m), new(Bia, 10m, 0m), new(Caio, 0m, 0m) };
+
+        var items = GroupDashboardMath.BuildPaidBy(amounts, Names, Statuses);
 
         Assert.Equal(2, items.Count);
         Assert.Equal(GroupMemberStatus.Active, items.Single(i => i.UserId == Ana).Status);
@@ -86,20 +90,14 @@ public class GroupDashboardMathTests
     }
 
     [Fact]
-    public void BuildParticipation_UnknownName_ShowsRemovedUser()
-    {
-        var items = GroupDashboardMath.BuildParticipation([new ParticipationAmount(Guid.NewGuid(), 5m, 0m)], Names, Statuses);
-
-        Assert.Equal("Usuário removido", items.Single().Name);
-    }
+    public void BuildPaidBy_UnknownName_ShowsRemovedUser() =>
+        Assert.Equal("Usuário removido", GroupDashboardMath.BuildPaidBy([new PayerAmount(Guid.NewGuid(), 5m, 0m)], Names, Statuses).Single().Name);
 
     [Fact]
-    public void BuildParticipation_ThirdsRoundToTwoDecimals()
+    public void BuildPaidBy_ThirdsRoundToTwoDecimals()
     {
-        var amounts = new List<ParticipationAmount> { new(Ana, 10m, 0m), new(Bia, 10m, 0m), new(Caio, 10m, 0m) };
+        var amounts = new List<PayerAmount> { new(Ana, 10m, 0m), new(Bia, 10m, 0m), new(Caio, 10m, 0m) };
 
-        var items = GroupDashboardMath.BuildParticipation(amounts, Names, Statuses);
-
-        Assert.All(items, i => Assert.Equal(33.33m, i.ExpensePercent));
+        Assert.All(GroupDashboardMath.BuildPaidBy(amounts, Names, Statuses), i => Assert.Equal(33.33m, i.Percent));
     }
 }

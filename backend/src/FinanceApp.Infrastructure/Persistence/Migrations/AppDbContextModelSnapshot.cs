@@ -669,6 +669,51 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.ToTable("group_members", (string)null);
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Groups.GroupTransactionSeries", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("frequency");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
+                    b.Property<int>("Occurrences")
+                        .HasColumnType("integer")
+                        .HasColumnName("occurrences");
+
+                    b.HasKey("Id")
+                        .HasName("pk_group_transaction_series");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_group_transaction_series_created_by_user_id");
+
+                    b.HasIndex("GroupId")
+                        .HasDatabaseName("ix_group_transaction_series_group_id");
+
+                    b.ToTable("group_transaction_series", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_group_transaction_series_frequency", "frequency IN ('Weekly','Biweekly','Monthly','Bimonthly','Quarterly','Semiannual','Annual')");
+
+                            t.HasCheckConstraint("ck_group_transaction_series_occurrences", "occurrences BETWEEN 2 AND 60");
+                        });
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Installments.InstallmentPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -784,6 +829,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("recipient_user_id");
 
+                    b.Property<int?>("SeriesOccurrences")
+                        .HasColumnType("integer")
+                        .HasColumnName("series_occurrences");
+
                     b.Property<string>("TransactionDescription")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -792,11 +841,6 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("TransactionId")
                         .HasColumnType("uuid")
                         .HasColumnName("transaction_id");
-
-                    b.Property<string>("TransactionType")
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("transaction_type");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -844,7 +888,9 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
 
                     b.ToTable("notifications", null, t =>
                         {
-                            t.HasCheckConstraint("ck_notifications_shape", "(type IN ('GroupTransactionCreated','GroupPaymentRegistered') AND transaction_id IS NOT NULL AND transaction_description IS NOT NULL AND transaction_type IS NOT NULL AND amount IS NOT NULL AND amount > 0 AND invitation_id IS NULL AND (actor_user_id IS NULL OR actor_user_id <> recipient_user_id)) OR (type = 'GroupInvitationReceived' AND invitation_id IS NOT NULL AND transaction_id IS NULL AND transaction_description IS NULL AND transaction_type IS NULL AND amount IS NULL)");
+                            t.HasCheckConstraint("ck_notifications_series_occurrences", "series_occurrences IS NULL OR (type = 'GroupTransactionCreated' AND series_occurrences BETWEEN 2 AND 60)");
+
+                            t.HasCheckConstraint("ck_notifications_shape", "(type IN ('GroupTransactionCreated','GroupPaymentRegistered') AND transaction_id IS NOT NULL AND transaction_description IS NOT NULL AND amount IS NOT NULL AND amount > 0 AND invitation_id IS NULL AND (actor_user_id IS NULL OR actor_user_id <> recipient_user_id)) OR (type = 'GroupInvitationReceived' AND invitation_id IS NOT NULL AND transaction_id IS NULL AND transaction_description IS NULL AND amount IS NULL AND series_occurrences IS NULL)");
                         });
                 });
 
@@ -1008,6 +1054,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("group_id");
 
+                    b.Property<Guid?>("GroupSeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_series_id");
+
                     b.Property<int?>("InstallmentNumber")
                         .HasColumnType("integer")
                         .HasColumnName("installment_number");
@@ -1052,6 +1102,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("RecurrenceRuleId")
                         .HasColumnType("uuid")
                         .HasColumnName("recurrence_rule_id");
+
+                    b.Property<int?>("SeriesNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("series_number");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1110,6 +1164,11 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_transactions_group_id_transaction_date")
                         .HasFilter("group_id IS NOT NULL");
 
+                    b.HasIndex("GroupSeriesId", "SeriesNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_transactions_group_series_id_series_number")
+                        .HasFilter("group_series_id IS NOT NULL");
+
                     b.HasIndex("InstallmentPlanId", "InstallmentNumber")
                         .IsUnique()
                         .HasDatabaseName("ux_transactions_installment_plan_id_number");
@@ -1124,9 +1183,11 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_transactions_credit_card_rules", "credit_card_id IS NULL OR (type = 'Expense' AND account_id IS NULL AND payment_method = 'CreditCard')");
 
-                            t.HasCheckConstraint("ck_transactions_due_date_after_date", "due_date IS NULL OR due_date >= transaction_date");
+                            t.HasCheckConstraint("ck_transactions_due_date_after_date", "due_date IS NULL OR group_id IS NOT NULL OR due_date >= transaction_date");
 
-                            t.HasCheckConstraint("ck_transactions_group_rules", "group_id IS NULL OR (account_id IS NULL AND credit_card_id IS NULL AND installment_plan_id IS NULL AND recurrence_rule_id IS NULL)");
+                            t.HasCheckConstraint("ck_transactions_group_rules", "group_id IS NULL OR (type = 'Expense' AND account_id IS NULL AND credit_card_id IS NULL AND installment_plan_id IS NULL AND recurrence_rule_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_transactions_group_series", "(group_series_id IS NULL) = (series_number IS NULL) AND (group_series_id IS NULL OR group_id IS NOT NULL) AND (series_number IS NULL OR series_number BETWEEN 1 AND 60)");
 
                             t.HasCheckConstraint("ck_transactions_installment_number_range", "installment_number IS NULL OR installment_number BETWEEN 1 AND 120");
 
@@ -1219,6 +1280,13 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_user_id");
 
+                    b.Property<decimal>("InterestAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("interest_amount");
+
                     b.Property<DateOnly>("PaymentDate")
                         .HasColumnType("date")
                         .HasColumnName("payment_date");
@@ -1231,6 +1299,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("uuid")
                         .HasColumnName("transaction_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
 
                     b.HasKey("Id")
                         .HasName("pk_transaction_payments");
@@ -1247,6 +1319,8 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.ToTable("transaction_payments", null, t =>
                         {
                             t.HasCheckConstraint("ck_transaction_payments_amount_positive", "amount > 0");
+
+                            t.HasCheckConstraint("ck_transaction_payments_interest_non_negative", "interest_amount >= 0");
                         });
                 });
 
@@ -1415,6 +1489,23 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_group_members_users_user_id");
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Groups.GroupTransactionSeries", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_group_transaction_series_users_created_by_user_id");
+
+                    b.HasOne("FinanceApp.Domain.Groups.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_group_transaction_series_groups_group_id");
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Installments.InstallmentPlan", b =>
                 {
                     b.HasOne("FinanceApp.Domain.Accounts.Account", "Account")
@@ -1554,6 +1645,12 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_transactions_groups_group_id");
 
+                    b.HasOne("FinanceApp.Domain.Groups.GroupTransactionSeries", "GroupSeries")
+                        .WithMany()
+                        .HasForeignKey("GroupSeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_group_transaction_series_group_series_id");
+
                     b.HasOne("FinanceApp.Domain.Installments.InstallmentPlan", "InstallmentPlan")
                         .WithMany()
                         .HasForeignKey("InstallmentPlanId")
@@ -1577,6 +1674,8 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("CreditCard");
+
+                    b.Navigation("GroupSeries");
 
                     b.Navigation("InstallmentPlan");
                 });

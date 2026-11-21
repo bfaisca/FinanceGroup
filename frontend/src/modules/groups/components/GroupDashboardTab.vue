@@ -13,11 +13,13 @@ import { useClockStore } from '@/stores/clock'
 import { monthPeriod, validatePeriod, type Period } from '@/utils/period'
 import { useResource } from '../composables'
 import { isGroupDashboardEmpty, NOT_DEBT_NOTICE } from '../dashboard'
+import { useGroupRefreshHandler } from '../refresh'
 import { groupDashboardService } from '../services/groupDashboardService'
 import type { GroupDetailDto } from '../types'
 import GroupCategoryBreakdown from './GroupCategoryBreakdown.vue'
 import GroupMonthlyChart from './GroupMonthlyChart.vue'
-import GroupParticipationCard from './GroupParticipationCard.vue'
+import GroupPaidByCard from './GroupPaidByCard.vue'
+import GroupPaidPendingCard from './GroupPaidPendingCard.vue'
 import GroupPeriodComparison from './GroupPeriodComparison.vue'
 
 const props = defineProps<{ group: GroupDetailDto }>()
@@ -67,11 +69,12 @@ const dashboard = useResource(
 )
 const data = dashboard.data
 
-const empty = computed(() => (data.value ? isGroupDashboardEmpty(data.value) : false))
-const balanceTone = computed(() => {
-  const balance = data.value?.totals.balance ?? 0
-  return balance > 0 ? 'positive' : balance < 0 ? 'negative' : 'neutral'
+useGroupRefreshHandler(async () => {
+  await dashboard.reload()
+  return dashboard.error.value === null
 })
+
+const empty = computed(() => (data.value ? isGroupDashboardEmpty(data.value) : false))
 </script>
 
 <template>
@@ -128,63 +131,36 @@ const balanceTone = computed(() => {
       <template v-else>
         <section class="gdash__grid gdash__block" aria-label="Resumo do período" :aria-busy="dashboard.loading.value">
           <FinancialCard
-            label="Despesas"
+            label="Total de despesas"
             icon="pi pi-arrow-down-right"
             tone="negative"
             :value="data.totals.expenses"
-            caption="Total cadastrado no período"
+            caption="Valor original das contas do período"
           />
           <FinancialCard
-            label="Receitas"
-            icon="pi pi-arrow-up-right"
-            tone="positive"
-            :value="data.totals.income"
-            caption="Total cadastrado no período"
-          />
-          <FinancialCard
-            label="Saldo do período"
-            icon="pi pi-equals"
-            :tone="balanceTone"
-            :value="data.totals.balance"
-            caption="Receitas menos despesas"
-          />
-        </section>
-
-        <section
-          class="gdash__grid gdash__block"
-          aria-label="Pagamentos e recebimentos"
-          :aria-busy="dashboard.loading.value"
-        >
-          <FinancialCard
-            label="Total pago"
+            label="Pago"
             icon="pi pi-check-circle"
             :value="data.totals.expensesPaid"
-            caption="Despesas já pagas"
+            caption="Efetivamente pago (inclui juros/multa)"
           />
           <FinancialCard
-            label="Total pendente"
+            label="Pendente"
             icon="pi pi-clock"
             :value="data.totals.expensesPending"
-            caption="Despesas ainda a pagar"
+            caption="Ainda a pagar (valor das contas)"
           />
           <FinancialCard
-            label="Recebido"
-            icon="pi pi-check-circle"
-            :value="data.totals.incomeReceived"
-            caption="Receitas já recebidas"
-          />
-          <FinancialCard
-            label="A receber"
-            icon="pi pi-clock"
-            :value="data.totals.incomePending"
-            caption="Receitas ainda a receber"
+            label="Juros/multa"
+            icon="pi pi-percentage"
+            :value="data.totals.interestPaid"
+            caption="Pagos além do valor das contas"
           />
         </section>
 
-        <h2 class="gdash__heading">Participação dos membros</h2>
+        <h2 class="gdash__heading">Pagamentos</h2>
         <div class="gdash__two gdash__block">
-          <GroupParticipationCard kind="createdBy" :items="data.createdBy" />
-          <GroupParticipationCard kind="paidBy" :items="data.paidBy" />
+          <GroupPaidPendingCard :totals="data.totals" />
+          <GroupPaidByCard :items="data.paidBy" />
         </div>
 
         <div class="gdash__two gdash__block">

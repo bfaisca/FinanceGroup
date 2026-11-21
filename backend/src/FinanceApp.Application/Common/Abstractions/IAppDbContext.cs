@@ -49,6 +49,8 @@ public interface IAppDbContext
 
     DbSet<GroupInvitation> GroupInvitations { get; }
 
+    DbSet<GroupTransactionSeries> GroupTransactionSeries { get; }
+
     DbSet<Notification> Notifications { get; }
 
     /// <summary>Rastreador de alterações (usado para descartar entidades pendentes após uma disputa de unicidade).</summary>

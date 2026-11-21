@@ -1,6 +1,5 @@
 using FinanceApp.Domain.Common;
 using FinanceApp.Domain.Notifications;
-using FinanceApp.Domain.Transactions;
 
 namespace FinanceApp.UnitTests.Etapa4b;
 
@@ -16,11 +15,11 @@ public sealed class NotificationDomainTests
     {
         var txId = Guid.NewGuid();
 
-        var n = Notification.ForTransactionCreated(recipient, group, actor, txId, "  Mercado  ", TransactionType.Expense, 150.5m, Now);
+        var n = Notification.ForTransactionCreated(recipient, group, actor, txId, "  Mercado  ", 150.5m, Now);
 
         Assert.Equal(NotificationType.GroupTransactionCreated, n.Type);
         Assert.Equal((recipient, group, actor, txId), (n.RecipientUserId, n.GroupId, n.ActorUserId, n.TransactionId));
-        Assert.Equal(("Mercado", TransactionType.Expense, 150.5m), (n.TransactionDescription, n.TransactionType, n.Amount));
+        Assert.Equal(("Mercado", 150.5m), (n.TransactionDescription, n.Amount));
         Assert.Null(n.InvitationId);
         Assert.False(n.IsRead);
         Assert.Null(n.ReadAt);
@@ -29,7 +28,7 @@ public sealed class NotificationDomainTests
     [Fact]
     public void ForPaymentRegistered_UsesThePaymentAmount()
     {
-        var n = Notification.ForPaymentRegistered(recipient, group, actor, Guid.NewGuid(), "Aluguel", TransactionType.Expense, 40m, Now);
+        var n = Notification.ForPaymentRegistered(recipient, group, actor, Guid.NewGuid(), "Aluguel", 40m, Now);
 
         Assert.Equal(NotificationType.GroupPaymentRegistered, n.Type);
         Assert.Equal(40m, n.Amount);
@@ -39,9 +38,9 @@ public sealed class NotificationDomainTests
     public void TheActorNeverReceivesTheirOwnNotification()
     {
         Assert.Throws<DomainException>(() =>
-            Notification.ForTransactionCreated(actor, group, actor, Guid.NewGuid(), "x", TransactionType.Expense, 1m, Now));
+            Notification.ForTransactionCreated(actor, group, actor, Guid.NewGuid(), "x", 1m, Now));
         Assert.Throws<DomainException>(() =>
-            Notification.ForPaymentRegistered(actor, group, actor, Guid.NewGuid(), "x", TransactionType.Income, 1m, Now));
+            Notification.ForPaymentRegistered(actor, group, actor, Guid.NewGuid(), "x", 1m, Now));
     }
 
     [Theory]
@@ -50,22 +49,22 @@ public sealed class NotificationDomainTests
     [InlineData(1.234)]
     public void InvalidAmounts_AreRejected(double amount) =>
         Assert.Throws<DomainException>(() =>
-            Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), "x", TransactionType.Expense, (decimal)amount, Now));
+            Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), "x", (decimal)amount, Now));
 
     [Fact]
     public void BlankOrTooLongDescription_IsRejected()
     {
         Assert.Throws<DomainException>(() =>
-            Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), "  ", TransactionType.Expense, 1m, Now));
+            Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), "  ", 1m, Now));
         Assert.Throws<DomainException>(() =>
-            Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), new string('a', 201), TransactionType.Expense, 1m, Now));
+            Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), new string('a', 201), 1m, Now));
     }
 
     [Fact]
     public void EmptyIdentifiers_AreRejected()
     {
         Assert.Throws<DomainException>(() =>
-            Notification.ForTransactionCreated(Guid.Empty, group, actor, Guid.NewGuid(), "x", TransactionType.Expense, 1m, Now));
+            Notification.ForTransactionCreated(Guid.Empty, group, actor, Guid.NewGuid(), "x", 1m, Now));
         Assert.Throws<DomainException>(() =>
             Notification.ForInvitationReceived(recipient, Guid.Empty, actor, Guid.NewGuid(), Now));
         Assert.Throws<DomainException>(() =>
@@ -101,7 +100,7 @@ public sealed class NotificationDomainTests
     [Fact]
     public void Reissue_IsOnlyForInvitationNotifications()
     {
-        var n = Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), "x", TransactionType.Expense, 1m, Now);
+        var n = Notification.ForTransactionCreated(recipient, group, actor, Guid.NewGuid(), "x", 1m, Now);
 
         Assert.Throws<DomainException>(() => n.Reissue(actor, Now));
     }

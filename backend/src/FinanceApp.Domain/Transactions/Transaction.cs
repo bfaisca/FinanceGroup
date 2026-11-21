@@ -3,6 +3,7 @@ using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Categories;
 using FinanceApp.Domain.Common;
 using FinanceApp.Domain.CreditCards;
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Installments;
 
 namespace FinanceApp.Domain.Transactions;
@@ -43,6 +44,12 @@ public sealed class Transaction
     public Guid? GroupId { get; private set; }
 
     public bool IsGroupTransaction => GroupId is not null;
+
+    /// <summary>Série de despesa recorrente do grupo (D-049); nulo para as demais movimentações.</summary>
+    public Guid? GroupSeriesId { get; private set; }
+
+    /// <summary>Número da ocorrência (1..N) dentro da série do grupo.</summary>
+    public int? SeriesNumber { get; private set; }
 
     public Guid? AccountId { get; private set; }
 
@@ -101,6 +108,8 @@ public sealed class Transaction
 
     public InstallmentPlan? InstallmentPlan { get; private set; }
 
+    public GroupTransactionSeries? GroupSeries { get; private set; }
+
     public IReadOnlyCollection<TransactionPayment> Payments => payments;
 
     public IReadOnlyCollection<TransactionAuditEntry> AuditEntries => auditEntries;
@@ -129,7 +138,8 @@ public sealed class Transaction
         string? notes,
         DateTimeOffset now,
         CreditCard? creditCard = null,
-        TransactionOrigin? origin = null)
+        TransactionOrigin? origin = null,
+        bool freeDueDate = false)
     {
         ArgumentNullException.ThrowIfNull(category);
         Guard.NotEmpty(createdByUserId, "O usuário é obrigatório.");
@@ -182,7 +192,11 @@ public sealed class Transaction
             dueDate = creditCard.CalculateDueDate(transactionDate);
         }
 
-        EnsureDates(transactionDate, dueDate);
+        if (!freeDueDate)
+        {
+            EnsureDates(transactionDate, dueDate);
+        }
+
         var normalizedNotes = NormalizeNotes(notes);
         var utcNow = Guard.Utc(now);
 
@@ -214,14 +228,14 @@ public sealed class Transaction
     }
 
     /// <summary>
-    /// Cria uma movimentação de um grupo (D-032): sem conta/cartão/parcelamento/recorrência. A categoria deve ser padrão
-    /// do sistema ou do próprio criador. A permissão de criar (membro ativo de grupo ativo) é verificada por quem chama.
+    /// Cria uma despesa de um grupo (D-032/D-046): sempre <c>Expense</c>, sem conta/cartão/parcelamento/recorrência individual.
+    /// A categoria deve ser padrão do sistema ou do próprio criador. O vencimento é livre (D-047). A permissão de criar
+    /// (membro ativo de grupo ativo) é verificada por quem chama.
     /// </summary>
     public static Transaction CreateForGroup(
         Guid groupId,
         Guid createdByUserId,
         string description,
-        TransactionType type,
         decimal amount,
         Category category,
         PaymentMethod? paymentMethod,
@@ -229,14 +243,24 @@ public sealed class Transaction
         DateOnly transactionDate,
         DateOnly? dueDate,
         string? notes,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        GroupTransactionSeries? series = null,
+        int? seriesNumber = null)
     {
         ArgumentNullException.ThrowIfNull(category);
         Guard.NotEmpty(groupId, "O grupo é obrigatório.");
+        if ((series is null) != (seriesNumber is null))
+        {
+            throw new DomainException("A ocorrência da série é inconsistente.");
+        }
+
         EnsureGroupCategory(category, createdByUserId);
         var transaction = Create(
-            createdByUserId, description, type, amount, category, null, paymentMethod, status, transactionDate, dueDate, notes, now);
+            createdByUserId, description, TransactionType.Expense, amount, category, null, paymentMethod, status, transactionDate, dueDate, notes, now,
+            freeDueDate: true);
         transaction.GroupId = groupId;
+        transaction.GroupSeriesId = series?.Id;
+        transaction.SeriesNumber = seriesNumber;
         return transaction;
     }
 
@@ -346,7 +370,10 @@ public sealed class Transaction
                 $"O valor não pode ser menor que o total já pago ({MoneyRules.Format(PaidAmount)}).");
         }
 
-        EnsureDates(transactionDate, dueDate);
+        if (GroupId is null)
+        {
+            EnsureDates(transactionDate, dueDate);
+        }
 
         // Categoria/conta só são revalidadas (ativa) quando trocadas: editar outros campos continua possível.
         var categoryChanged = category.Id != CategoryId;
@@ -443,23 +470,11 @@ public sealed class Transaction
         DateOnly today,
         Account? account,
         PaymentMethod? paymentMethod,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        decimal interestAmount = 0m)
     {
         EnsureNotCanceled("Movimentações canceladas não aceitam pagamentos. Reabra a movimentação antes.");
-        if (amount <= 0)
-        {
-            throw new DomainException("O valor do pagamento deve ser maior que zero.");
-        }
-
-        if (!MoneyRules.HasValidScale(amount) || !MoneyRules.IsWithinRange(amount))
-        {
-            throw new DomainException("O valor do pagamento é inválido (máximo de 2 casas decimais).");
-        }
-
-        if (paymentDate > today)
-        {
-            throw new DomainException("A data do pagamento não pode ser futura.");
-        }
+        EnsurePaymentValues(amount, interestAmount, paymentDate, today);
 
         if (amount > RemainingAmount)
         {
@@ -474,7 +489,7 @@ public sealed class Transaction
         }
 
         var utcNow = Guard.Utc(now);
-        var payment = TransactionPayment.Create(Id, amount, paymentDate, userId, account?.Id, EnsureMethod(paymentMethod), utcNow);
+        var payment = TransactionPayment.Create(Id, amount, paymentDate, userId, account?.Id, EnsureMethod(paymentMethod), utcNow, interestAmount);
         payments.Add(payment);
         PaidAmount += amount;
 
@@ -494,6 +509,104 @@ public sealed class Transaction
         UpdatedAt = utcNow;
         AddAudit(userId, TransactionAuditAction.PaymentAdded, "payment", null, FormatPayment(payment), utcNow);
         return payment;
+    }
+
+    /// <summary>
+    /// Edita o PRÓPRIO pagamento de grupo (D-048): principal, juros, data, conta privada e forma. Reavalia Σ principal ≤ valor da
+    /// conta e recalcula pago/estado/<c>PaidAt</c>. Somente o pagador (<see cref="PermissionDeniedException"/> aos demais).
+    /// </summary>
+    public TransactionPayment UpdatePayment(
+        Guid userId,
+        Guid paymentId,
+        decimal amount,
+        decimal interestAmount,
+        DateOnly paymentDate,
+        DateOnly today,
+        Account? account,
+        PaymentMethod? paymentMethod,
+        DateTimeOffset now)
+    {
+        if (GroupId is null)
+        {
+            throw new DomainException("Somente pagamentos de movimentações de grupo podem ser editados.");
+        }
+
+        EnsureNotCanceled("Não é possível editar pagamentos de uma movimentação cancelada. Reabra a movimentação antes.");
+        EnsurePaymentsLoaded();
+        var payment = payments.FirstOrDefault(p => p.Id == paymentId)
+            ?? throw new DomainException("Pagamento não encontrado nesta movimentação.");
+        if (payment.CreatedByUserId != userId)
+        {
+            throw new PermissionDeniedException("Somente quem registrou o pagamento pode editá-lo.");
+        }
+
+        EnsurePaymentValues(amount, interestAmount, paymentDate, today);
+        var otherPrincipal = PaidAmount - payment.Amount;
+        if (otherPrincipal + amount > Amount)
+        {
+            throw new DomainException(
+                $"O valor do pagamento ({MoneyRules.Format(amount)}) excede o valor restante da movimentação ({MoneyRules.Format(Amount - otherPrincipal)}).");
+        }
+
+        if (account is not null && account.Id != payment.AccountId)
+        {
+            // Só valida a conta quando ela muda; manter uma conta já vinculada não pode travar a edição de juros/data.
+            account.EnsureActive("A conta selecionada está desativada.");
+        }
+
+        if (account is not null && account.UserId != userId)
+        {
+            throw new DomainException("A conta do pagamento deve ser do próprio pagador.");
+        }
+
+        var utcNow = Guard.Utc(now);
+        var before = FormatPayment(payment);
+        payment.Apply(amount, interestAmount, paymentDate, account?.Id, EnsureMethod(paymentMethod), utcNow);
+        PaidAmount = otherPrincipal + amount;
+
+        if (PaidAmount == Amount)
+        {
+            Status = TransactionStatus.Paid;
+            RefreshSettlementMarkers();
+        }
+        else
+        {
+            Status = TransactionStatus.Pending;
+            PaidAt = null;
+            PaidByUserId = null;
+        }
+
+        UpdatedAt = utcNow;
+        AddAudit(userId, TransactionAuditAction.PaymentUpdated, "payment", before, FormatPayment(payment), utcNow);
+        return payment;
+    }
+
+    private void EnsurePaymentValues(decimal amount, decimal interestAmount, DateOnly paymentDate, DateOnly today)
+    {
+        if (amount <= 0)
+        {
+            throw new DomainException("O valor do pagamento deve ser maior que zero.");
+        }
+
+        if (!MoneyRules.HasValidScale(amount) || !MoneyRules.IsWithinRange(amount))
+        {
+            throw new DomainException("O valor do pagamento é inválido (máximo de 2 casas decimais).");
+        }
+
+        if (interestAmount < 0 || !MoneyRules.HasValidScale(interestAmount) || !MoneyRules.IsWithinRange(interestAmount))
+        {
+            throw new DomainException("O valor dos juros/multa é inválido (não negativo, máximo de 2 casas decimais).");
+        }
+
+        if (interestAmount > 0 && GroupId is null)
+        {
+            throw new DomainException("Juros/multa só podem ser informados em pagamentos de grupo.");
+        }
+
+        if (paymentDate > today)
+        {
+            throw new DomainException("A data do pagamento não pode ser futura.");
+        }
     }
 
     public void RemovePayment(Guid userId, Guid paymentId, DateTimeOffset now)
@@ -754,5 +867,7 @@ public sealed class Transaction
     private static string? FormatDate(DateOnly? value) => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static string FormatPayment(TransactionPayment payment) =>
-        $"{FormatAmount(payment.Amount)} ({FormatDate(payment.PaymentDate)})";
+        payment.InterestAmount > 0
+            ? $"{FormatAmount(payment.Amount)} + {FormatAmount(payment.InterestAmount)} juros ({FormatDate(payment.PaymentDate)})"
+            : $"{FormatAmount(payment.Amount)} ({FormatDate(payment.PaymentDate)})";
 }

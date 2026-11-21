@@ -1,5 +1,5 @@
 /**
- * Tipos espelhando docs/API_CONTRACTS.md §16 (Etapa 4 — Grupos). Não adicionar campos fora do contrato.
+ * Tipos espelhando docs/API_CONTRACTS.md §16 (Etapa 4 — Grupos; v1.5: somente despesas). Não adicionar campos fora do contrato.
  */
 import type {
   DateOnlyString,
@@ -12,7 +12,6 @@ import type {
   TransactionHistoryAction,
   TransactionInitialStatus,
   TransactionStatus,
-  TransactionType,
   Uuid,
 } from '@/types/api'
 
@@ -113,9 +112,17 @@ export interface GroupTransactionDto {
   id: Uuid
   groupId: Uuid
   description: string
-  type: TransactionType
+  /** Grupos só têm despesas (D-046). */
+  type: 'Expense'
+  /** Valor ORIGINAL da conta (editável por ocorrência). */
   amount: number
+  /** Principal já coberto (Σ dos pagamentos); só ele define a situação. */
   paidAmount: number
+  /** Σ juros/multa pagos (D-048). */
+  interestPaid: number
+  /** `paidAmount + interestPaid` = efetivamente pago. */
+  totalPaid: number
+  /** `amount − paidAmount`. */
   remainingAmount: number
   /** Apresentado (inclui `Overdue`). */
   status: TransactionStatus
@@ -129,20 +136,36 @@ export interface GroupTransactionDto {
   dueDate: DateOnlyString | null
   paidAt: DateOnlyString | null
   notes: string | null
+  /** Recorrência do grupo (D-049); `null` se não faz parte de uma série. */
+  series: GroupSeriesDto | null
   createdBy: GroupUserRefDto
   createdAt: IsoDateTimeString
   updatedAt: IsoDateTimeString
   permissions: GroupTransactionPermissions
 }
 
+export interface GroupSeriesDto {
+  id: Uuid
+  /** Posição da ocorrência (1-based). */
+  number: number
+  total: number
+}
+
 export interface GroupTransactionPaymentDto {
   id: Uuid
+  /** Principal aplicado à conta. */
   amount: number
+  /** Juros/multa (≥ 0). */
+  interestAmount: number
+  /** `amount + interestAmount`. */
+  totalAmount: number
   paymentDate: DateOnlyString
   paymentMethod: PaymentMethod | null
   paidBy: GroupUserRefDto
   createdAt: IsoDateTimeString
-  /** Só o próprio pagador, e com o grupo ativo. */
+  updatedAt: IsoDateTimeString
+  /** Só o próprio pagador, com o grupo ativo e a conta não cancelada. */
+  canEdit: boolean
   canRemove: boolean
 }
 
@@ -160,29 +183,49 @@ export interface GroupTransactionHistoryEntryDto {
   createdAt: IsoDateTimeString
 }
 
+/** `accountId` = conta do próprio pagador; é privada e nunca devolvida. */
+export interface GroupPaymentRequest {
+  /** Principal aplicado (> 0); Σ dos pagamentos ≤ valor da conta. */
+  amount: number
+  /** Juros/multa (≥ 0, padrão 0); não entra na regra "≤ valor da conta". */
+  interestAmount?: number
+  /** ≤ hoje; qualquer data passada. */
+  paymentDate: DateOnlyString
+  accountId?: Uuid | null
+  /** Só na EDIÇÃO (PUT): sem `accountId` a conta privada atual é mantida; `true` desvincula. */
+  clearAccount?: boolean
+  paymentMethod?: PaymentMethod | null
+}
+
+export type GroupRecurrenceFrequency =
+  'Weekly' | 'Biweekly' | 'Monthly' | 'Bimonthly' | 'Quarterly' | 'Semiannual' | 'Annual'
+
+export interface GroupRecurrenceRequest {
+  frequency: GroupRecurrenceFrequency
+  /** 2–60. */
+  occurrences: number
+}
+
+/** Sem `type` (sempre despesa). */
 export interface CreateGroupTransactionRequest {
   description: string
-  type: TransactionType
   amount: number
   categoryId: Uuid
   paymentMethod?: PaymentMethod | null
   /** Padrão `Pending`. */
   status?: TransactionInitialStatus
   transactionDate: DateOnlyString
+  /** Livre: pode ser anterior a hoje e à data da movimentação. */
   dueDate?: DateOnlyString | null
   notes?: string | null
+  /** "Já paga": cria a conta e o 1º pagamento do criador (D-047). */
+  payment?: GroupPaymentRequest | null
+  /** N ocorrências geradas na hora (D-049). */
+  recurrence?: GroupRecurrenceRequest | null
 }
 
-/** Mesmos campos, exceto `type` (imutável). */
-export type UpdateGroupTransactionRequest = Omit<CreateGroupTransactionRequest, 'type'>
-
-/** `accountId` = conta do próprio pagador; é privada e nunca devolvida. */
-export interface CreateGroupPaymentRequest {
-  amount: number
-  paymentDate: DateOnlyString
-  accountId?: Uuid | null
-  paymentMethod?: PaymentMethod | null
-}
+/** Edita só ESTA ocorrência; sem `payment` nem `recurrence`. */
+export type UpdateGroupTransactionRequest = Omit<CreateGroupTransactionRequest, 'payment' | 'recurrence'>
 
 export type GroupTransactionSortField = 'transactionDate' | 'dueDate' | 'amount' | 'description' | 'createdAt'
 
@@ -190,7 +233,6 @@ export type GroupTransactionSortField = 'transactionDate' | 'dueDate' | 'amount'
 export interface GroupTransactionListQuery extends PageQuery {
   from?: DateOnlyString
   to?: DateOnlyString
-  type?: TransactionType
   /** Inclui subcategorias. */
   categoryId?: Uuid
   status?: TransactionStatus
@@ -202,33 +244,33 @@ export interface GroupTransactionListQuery extends PageQuery {
 
 // ---------- 16.3 Dashboard do grupo ----------
 
-export interface GroupParticipationItemDto {
+export interface GroupPaidByItemDto {
   userId: Uuid
   name: string
   status: GroupMemberStatus
-  expenseAmount: number
-  /** 0–100, 2 casas. */
-  expensePercent: number
-  incomeAmount: number
-  incomePercent: number
+  /** Σ (principal + juros) dos pagamentos dessa pessoa. */
+  paidAmount: number
+  /** Parte de juros/multa dentro de `paidAmount`. */
+  interestAmount: number
+  /** 0–100, 2 casas, sobre `totals.expensesPaid`. */
+  percent: number
 }
 
 export interface GroupDashboardDto {
   period: { from: DateOnlyString; to: DateOnlyString }
   totals: {
+    /** Σ valores originais. */
     expenses: number
+    expensesPaidPrincipal: number
+    /** Σ juros/multa. */
+    interestPaid: number
+    /** `expensesPaidPrincipal + interestPaid` (efetivamente pago). */
     expensesPaid: number
+    /** `expenses − expensesPaidPrincipal` (só principal; nunca negativo). */
     expensesPending: number
-    income: number
-    incomeReceived: number
-    incomePending: number
-    /** income - expenses */
-    balance: number
   }
-  /** Por quem CADASTROU (soma dos valores). */
-  createdBy: GroupParticipationItemDto[]
-  /** Por quem PAGOU/RECEBEU (soma dos pagamentos). */
-  paidBy: GroupParticipationItemDto[]
+  /** "Contas Pagas": quem pagou (só quem pagou algo). */
+  paidBy: GroupPaidByItemDto[]
   expensesByCategory: {
     categoryId: Uuid
     name: string
@@ -237,16 +279,14 @@ export interface GroupDashboardDto {
     percent: number
     children: { categoryId: Uuid; name: string; amount: number; percent: number }[]
   }[]
-  /** `month` = YYYY-MM */
-  monthly: { month: string; income: number; expenses: number }[]
+  /** `month` = YYYY-MM; `paid` = efetivamente pago das contas do mês. */
+  monthly: { month: string; expenses: number; paid: number }[]
   previousPeriod: {
     from: DateOnlyString
     to: DateOnlyString
     expenses: number
-    income: number
     /** `null` se a base é 0. */
     expensesChangePercent: number | null
-    incomeChangePercent: number | null
   }
 }
 

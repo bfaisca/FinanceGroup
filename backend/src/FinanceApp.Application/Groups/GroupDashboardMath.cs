@@ -4,12 +4,16 @@ using FinanceApp.Domain.Users;
 
 namespace FinanceApp.Application.Groups;
 
-/// <summary>Soma por usuário (autoria ou pagamentos) antes de virar item de participação.</summary>
-internal sealed record ParticipationAmount(Guid UserId, decimal Expense, decimal Income);
+/// <summary>Pagamentos somados por pagador (principal e juros) antes de virar item de "Contas Pagas".</summary>
+internal sealed record PayerAmount(Guid UserId, decimal Principal, decimal Interest);
 
-/// <summary>Cálculos puros do dashboard do grupo (D-034).</summary>
+/// <summary>Cálculos puros do dashboard do grupo (D-034, emendada por D-046/D-048).</summary>
 internal static class GroupDashboardMath
 {
+    /// <summary>Pendente = originais − principal pago, nunca negativo; pago = principal + juros.</summary>
+    public static GroupDashboardTotalsDto Totals(decimal expenses, decimal paidPrincipal, decimal interest) =>
+        new(expenses, paidPrincipal, interest, paidPrincipal + interest, Math.Max(0m, expenses - paidPrincipal));
+
     /// <summary>
     /// Variação percentual em relação ao período anterior (2 casas, arredondamento comercial); base zero → <c>null</c>.
     /// </summary>
@@ -17,28 +21,25 @@ internal static class GroupDashboardMath
         previous == 0 ? null : Math.Round((current - previous) / previous * 100m, 2, MidpointRounding.AwayFromZero);
 
     /// <summary>
-    /// Itens de participação: percentual sobre o total do MESMO tipo (soma dos valores informados), ordenados pelo maior valor
-    /// total (despesa + receita) e depois por nome; apenas quem tem valor no período.
+    /// "Contas Pagas": quem pagou algo (principal + juros), percentual sobre o total efetivamente pago, ordenado do maior para o
+    /// menor valor e depois por nome.
     /// </summary>
-    public static IReadOnlyList<GroupParticipationItemDto> BuildParticipation(
-        IReadOnlyCollection<ParticipationAmount> amounts,
+    public static IReadOnlyList<GroupPaidByItemDto> BuildPaidBy(
+        IReadOnlyCollection<PayerAmount> amounts,
         IReadOnlyDictionary<Guid, string> names,
         IReadOnlyDictionary<Guid, GroupMemberStatus> statuses)
     {
-        var totalExpense = amounts.Sum(a => a.Expense);
-        var totalIncome = amounts.Sum(a => a.Income);
-
+        var totalPaid = amounts.Sum(a => a.Principal + a.Interest);
         return amounts
-            .Where(a => a.Expense != 0 || a.Income != 0)
-            .Select(a => new GroupParticipationItemDto(
+            .Where(a => a.Principal + a.Interest > 0)
+            .Select(a => new GroupPaidByItemDto(
                 a.UserId,
                 names.GetValueOrDefault(a.UserId, User.AnonymizedName),
                 statuses.GetValueOrDefault(a.UserId, GroupMemberStatus.Left),
-                a.Expense,
-                ReportMath.Percentage(a.Expense, totalExpense),
-                a.Income,
-                ReportMath.Percentage(a.Income, totalIncome)))
-            .OrderByDescending(i => i.ExpenseAmount + i.IncomeAmount)
+                a.Principal + a.Interest,
+                a.Interest,
+                ReportMath.Percentage(a.Principal + a.Interest, totalPaid)))
+            .OrderByDescending(i => i.PaidAmount)
             .ThenBy(i => i.Name, StringComparer.CurrentCulture)
             .ThenBy(i => i.UserId)
             .ToList();

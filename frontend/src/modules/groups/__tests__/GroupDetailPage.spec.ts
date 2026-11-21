@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createPinia } from 'pinia'
+import ToastEventBus from 'primevue/toasteventbus'
+import { useAuthStore } from '@/stores/auth'
+import { useNotificationsStore } from '@/modules/notifications/store'
 import MockAdapter from 'axios-mock-adapter'
 import { flushPromises } from '@vue/test-utils'
 import { http } from '@/services/http'
@@ -106,5 +110,122 @@ describe('GroupDetailPage', () => {
     expect(mock.history.post.some((r) => r.url === '/groups/g1/leave')).toBe(true)
     expect(router.currentRoute.value.name).toBe('groups')
     wrapper.unmount()
+  })
+
+  describe('botão Atualizar (D-050)', () => {
+    let toasts: { severity: string; summary: string }[] = []
+    const collect = (message: { severity: string; summary: string }) => toasts.push(message)
+    beforeEach(() => {
+      toasts = []
+      ToastEventBus.on('add', collect)
+    })
+    afterEach(() => ToastEventBus.off('add', collect))
+
+    const refreshButton = (wrapper: { find: (s: string) => { element: Element } }) =>
+      wrapper.find('[data-testid="refresh-button"]').element as HTMLButtonElement
+
+    it('aparece em todas as abas, com nome acessível', async () => {
+      mock.onGet('/groups/g1').reply(200, makeGroupDetail())
+      mock
+        .onGet('/groups/g1/transactions')
+        .reply(200, { items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
+      mock.onGet('/groups/g1/members').reply(200, [])
+      for (const tab of ['', '?tab=transactions', '?tab=members', '?tab=settings']) {
+        const { wrapper } = await mountPage(`/groups/g1${tab}`)
+        const el = refreshButton(wrapper)
+        expect(el.getAttribute('aria-label')).toBe('Atualizar dados do grupo')
+        wrapper.unmount()
+      }
+    })
+
+    it('recarrega o grupo, o dashboard da aba atual e o contador de notificações; mostra "Atualizado às"', async () => {
+      mock.onGet('/groups/g1').reply(200, makeGroupDetail())
+      mock.onGet('/notifications/unread-count').reply(200, { count: 3 })
+      const pinia = createPinia()
+      useAuthStore(pinia).setSession({
+        accessToken: 't',
+        accessTokenExpiresAt: '2026-11-21T23:00:00Z',
+        user: { id: 'u1', name: 'Maria', email: 'm@x.com', createdAt: '2026-01-01T00:00:00Z' },
+      })
+      const { wrapper } = await mountAt(
+        GroupDetailPage,
+        '/groups/g1',
+        { path: '/groups/:id', name: 'group-detail' },
+        { pinia },
+      )
+
+      const count = (url: string) => mock.history.get.filter((r) => r.url === url).length
+      expect(count('/groups/g1')).toBe(1)
+      expect(count('/groups/g1/dashboard')).toBe(1)
+
+      refreshButton(wrapper).click()
+      await flushPromises()
+
+      expect(count('/groups/g1')).toBe(2)
+      expect(count('/groups/g1/dashboard')).toBe(2)
+      expect(count('/notifications/unread-count')).toBe(1)
+      expect(useNotificationsStore(pinia).unreadCount).toBe(3)
+      expect(wrapper.find('[data-testid="last-updated"]').text()).toMatch(/^Atualizado às \d{2}:\d{2}$/)
+      expect(toasts).toEqual([expect.objectContaining({ severity: 'success', summary: 'Dados atualizados' })])
+      wrapper.unmount()
+    })
+
+    it('na aba de movimentações recarrega a lista e os membros', async () => {
+      mock.onGet('/groups/g1').reply(200, makeGroupDetail())
+      mock
+        .onGet('/groups/g1/transactions')
+        .reply(200, { items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 })
+      mock.onGet('/groups/g1/members').reply(200, [])
+      mock.onGet('/categories').reply(200, [])
+      const { wrapper } = await mountPage('/groups/g1?tab=transactions')
+      const count = (url: string) => mock.history.get.filter((r) => r.url === url).length
+      expect(count('/groups/g1/transactions')).toBe(1)
+
+      refreshButton(wrapper).click()
+      await flushPromises()
+      expect(count('/groups/g1/transactions')).toBe(2)
+      expect(count('/groups/g1/members')).toBe(2)
+      // O dashboard não está montado nesta aba: carrega fresco ao voltar ao Resumo.
+      expect(count('/groups/g1/dashboard')).toBe(0)
+      wrapper.unmount()
+    })
+
+    it('sem rajada: durante a atualização o botão fica em "atualizando" e cliques extras são ignorados', async () => {
+      mock.onGet('/groups/g1').reply(200, makeGroupDetail())
+      const { wrapper } = await mountPage()
+      let release!: () => void
+      mock
+        .onGet('/groups/g1/dashboard')
+        .reply(() => new Promise((resolve) => (release = () => resolve([200, makeGroupDashboard()]))))
+
+      const el = refreshButton(wrapper)
+      el.click()
+      await flushPromises()
+      expect(el.getAttribute('aria-busy')).toBe('true')
+      expect(wrapper.find('[data-testid="last-updated"]').text()).toBe('Atualizando…')
+      el.click()
+      el.click()
+      await flushPromises()
+      expect(mock.history.get.filter((r) => r.url === '/groups/g1')).toHaveLength(2)
+
+      release()
+      await flushPromises()
+      expect(el.getAttribute('aria-busy')).toBe('false')
+      expect(wrapper.find('[data-testid="last-updated"]').text()).toContain('Atualizado às')
+      wrapper.unmount()
+    })
+
+    it('falha: avisa que não foi possível atualizar e mantém os dados anteriores', async () => {
+      mock.onGet('/groups/g1').reply(200, makeGroupDetail())
+      const { wrapper } = await mountPage()
+      mock.onGet('/groups/g1/dashboard').reply(500, { title: 'Erro interno.' })
+
+      refreshButton(wrapper).click()
+      await flushPromises()
+
+      expect(toasts).toEqual([expect.objectContaining({ severity: 'error', summary: 'Não foi possível atualizar' })])
+      expect(wrapper.find('h1').text()).toBe('Casa')
+      wrapper.unmount()
+    })
   })
 })

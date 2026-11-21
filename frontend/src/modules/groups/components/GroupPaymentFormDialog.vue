@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import { useToast } from 'primevue/usetoast'
 import { useRestoreFocus } from '@/composables/useRestoreFocus'
-import { PAYMENT_FORM_FIELDS } from '@/modules/transactions/validation'
 import { useClockStore } from '@/stores/clock'
-import { paymentActionLabel } from '@/utils/labels'
 import { toAppError } from '@/utils/problem'
 import { groupTransactionService } from '../services/groupTransactionService'
-import type { CreateGroupPaymentRequest, GroupTransactionDetailDto } from '../types'
+import type { GroupPaymentRequest, GroupTransactionDetailDto, GroupTransactionPaymentDto } from '../types'
+import { GROUP_PAYMENT_FORM_FIELDS } from '../validation'
 import GroupPaymentForm from './GroupPaymentForm.vue'
 
-const props = defineProps<{ groupId: string; transaction: GroupTransactionDetailDto }>()
+const props = withDefaults(
+  defineProps<{
+    groupId: string
+    transaction: GroupTransactionDetailDto
+    /** Pagamento em edição (só o próprio pagador); `null` = novo pagamento. */
+    payment?: GroupTransactionPaymentDto | null
+  }>(),
+  { payment: null },
+)
 const visible = defineModel<boolean>('visible', { required: true })
 const emit = defineEmits<{ saved: [transaction: GroupTransactionDetailDto] }>()
 
@@ -24,6 +31,8 @@ const errorMessage = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string[]>>({})
 const formKey = ref(0)
 
+const isEdit = computed(() => props.payment !== null)
+
 watch(visible, (value) => {
   if (value) {
     formKey.value += 1
@@ -32,23 +41,25 @@ watch(visible, (value) => {
   }
 })
 
-async function onSubmit(request: CreateGroupPaymentRequest): Promise<void> {
+async function onSubmit(request: GroupPaymentRequest): Promise<void> {
   loading.value = true
   errorMessage.value = null
   fieldErrors.value = {}
   try {
-    const saved = await groupTransactionService.addPayment(props.groupId, props.transaction.id, request)
+    const saved = props.payment
+      ? await groupTransactionService.updatePayment(props.groupId, props.transaction.id, props.payment.id, request)
+      : await groupTransactionService.addPayment(props.groupId, props.transaction.id, request)
     visible.value = false
     toast.add({
       severity: 'success',
-      summary: props.transaction.type === 'Income' ? 'Recebimento registrado' : 'Pagamento registrado',
+      summary: isEdit.value ? 'Pagamento atualizado' : 'Pagamento registrado',
       life: 3500,
     })
     emit('saved', saved)
   } catch (error) {
     const appError = toAppError(error)
     fieldErrors.value = appError.fieldErrors
-    const mapped = (PAYMENT_FORM_FIELDS as readonly string[]).some((field) => appError.fieldErrors[field])
+    const mapped = (GROUP_PAYMENT_FORM_FIELDS as readonly string[]).some((field) => appError.fieldErrors[field])
     errorMessage.value = mapped ? null : appError.message
   } finally {
     loading.value = false
@@ -60,7 +71,7 @@ async function onSubmit(request: CreateGroupPaymentRequest): Promise<void> {
   <Dialog
     v-model:visible="visible"
     modal
-    :header="paymentActionLabel(transaction.type)"
+    :header="isEdit ? 'Editar pagamento' : 'Registrar pagamento'"
     :closable="!loading"
     :close-on-escape="!loading"
     :style="{ width: 'min(34rem, calc(100vw - 1.5rem))' }"
@@ -68,6 +79,7 @@ async function onSubmit(request: CreateGroupPaymentRequest): Promise<void> {
     <GroupPaymentForm
       :key="formKey"
       :transaction="transaction"
+      :payment="payment"
       :today="clock.today"
       :loading="loading"
       :error-message="errorMessage"

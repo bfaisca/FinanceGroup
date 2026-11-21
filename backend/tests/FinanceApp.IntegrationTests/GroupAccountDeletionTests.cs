@@ -69,7 +69,7 @@ public class GroupAccountDeletionTests(ApiFactory factory)
         Assert.Equal(owner.Id, stored.CreatedByUserId);
         var dashboard = await member.GetOk<GroupDashboardDto>($"/api/v1/groups/{gid}/dashboard?from={h.Today.AddDays(-5):yyyy-MM-dd}&to={h.Today.AddDays(5):yyyy-MM-dd}");
         Assert.Equal(300m, dashboard.Totals.Expenses);
-        Assert.Contains(dashboard.CreatedBy, p => p.Name == "Usuário removido" && p.Status == GroupMemberStatus.Left);
+        Assert.Contains(dashboard.PaidBy, p => p.Name == "Usuário removido" && p.Status == GroupMemberStatus.Left);
 
         // Convite pendente enviado por ela foi revogado; dados individuais foram removidos.
         var invitation = await h.WithDbAsync(db => Task.FromResult(db.GroupInvitations.AsNoTracking().Single(i => i.Id == pending.Id)));

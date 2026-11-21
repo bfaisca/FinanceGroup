@@ -10,7 +10,7 @@ export function makeNotification(partial: Partial<NotificationDto> = {}): Notifi
     isRead: false,
     group: { id: 'g1', name: 'Casa' },
     actor: { userId: 'u2', name: 'Brendo' },
-    transaction: { id: 't1', description: 'Mercado', type: 'Expense', amount: 300 },
+    transaction: { id: 't1', description: 'Mercado', type: 'Expense', amount: 300, seriesOccurrences: null },
     invitation: null,
     ...partial,
   }

@@ -243,7 +243,7 @@ Escolhas conservadoras para o que D-041 a D-044 não detalham (sem alterar rotas
 # Etapa 4c — Ajustes de grupos pedidos pelo usuário (2026-11-21)
 
 ## D-046 — Grupos só têm despesas — Aceita
-Receitas não existem em grupos: não se cria (`422`), não aparece em listagens, dashboard nem notificações; some o filtro de tipo e a variante "recebeu". Linhas de receita de grupo já gravadas (dados de teste) **não são apagadas** (preservar dados): ficam ocultas por filtro `Type = Expense` em todas as consultas de grupo. Emenda D-032/D-034/D-042.
+Receitas não existem em grupos: não se cria (`422`), não aparece em listagens, dashboard, notificações nem projeção; some o filtro de tipo e a variante "recebeu". A regra é garantida **no banco**: o check `ck_transactions_group_rules` exige `type = 'Expense'` quando `group_id IS NOT NULL` (junto de "sem conta/cartão/parcelamento/recorrência"), sem tratamento de linhas legadas (o produto ainda não foi lançado). Emenda D-032/D-034/D-042.
 
 ## D-047 — Lançar já paga e vencimento livre — Aceita
 `CreateGroupTransactionRequest.payment` cria a conta e o primeiro pagamento do criador na mesma transação (data de pagamento ≤ hoje, qualquer data passada; conta privada opcional). O vencimento (`dueDate`) é livre, inclusive no passado e sem relação mínima com a data da movimentação, **apenas para movimentações de grupo**. Criar já paga gera as duas notificações (criação e pagamento).
@@ -255,8 +255,24 @@ Receitas não existem em grupos: não se cria (`422`), não aparece em listagens
 - Saldo projetado individual (D-033): um pagamento de grupo com `accountId` subtrai principal + juros.
 - Notificação de pagamento mostra o valor total pago.
 
+**Ajuste (contas privadas na edição):** como a API nunca devolve `accountId`, o `PUT` do pagamento mantém a conta atual quando `accountId` é omitido; `clearAccount: true` desvincula; `accountId` troca. Evita que editar juros apague silenciosamente o vínculo com o saldo individual.
+
 ## D-049 — Recorrência no grupo (N ocorrências geradas na hora) — Aceita (emenda D-032 ⚠)
 `recurrence {frequency, occurrences 2–60}`: cria todas as ocorrências de imediato, cada uma uma conta independente do grupo (mesmo valor, categoria, criador). Frequências: semanal, quinzenal, mensal, bimestral, trimestral, semestral, anual (sem diária nem personalizada). Datas: `transactionDate + (i−1)·passo`, com ajuste de fim de mês como D-026; o vencimento, se houver, mantém o mesmo deslocamento em dias da data da movimentação. Tabela `group_transaction_series`; cada ocorrência carrega `series {id, number, total}`. Depois de criada, cada ocorrência é editada/paga/cancelada/excluída isoladamente (para refletir juros em um mês). Ações em lote na série (cancelar restantes, editar todas) ficam **fora** desta versão. Uma única notificação de criação por série. Parcelamentos de grupo continuam fora do MVP.
 
 ## D-050 — Atualizar manualmente — Técnica
 Botão "Atualizar" na tela do grupo recarrega dados da aba atual, o dashboard e o contador de notificações. Sem tempo real (D-044 mantida).
+
+## D-051 — Migrations de grupos consolidadas (pré-lançamento) — Aceita
+Como o produto ainda não foi lançado, as migrations `Etapa4_Groups`, `Etapa4b_Notifications` e os ajustes da 4c foram consolidados em UMA migration `Etapa4_Groups` com o esquema final (groups, group_members, group_invitations, group_transaction_series, notifications; colunas e checks de grupo em `transactions` e `transaction_payments`). Migrations das Etapas 1–3 não foram alteradas. **Quem já rodou as versões anteriores deve recriar o banco** (`docker compose down -v`). O snapshot do modelo foi regenerado a partir do estado da Etapa 3.
+
+## D-052 — Detalhes da Etapa 4c — Proposta
+Escolhas conservadoras para o que D-046 a D-049 não detalham (sem alterar rotas ou DTOs do contrato v1.5):
+- **Status das ocorrências:** cada ocorrência nasce com o `status` pedido (`Planned`/`Pending`, padrão `Pending`), sem a regra "futura = Planned" das recorrências individuais; o vencimento define o `Overdue` apresentado.
+- **Vencimento deslocado:** `dueDate_i = data_i + (dueDate − transactionDate)` em dias (pode ser negativo); datas fora do intervalo suportado → `422`.
+- **`PUT /payments/{paymentId}` é substituição completa:** `accountId`/`paymentMethod` omitidos limpam a conta/forma gravadas; `amount` é obrigatório; a edição não gera notificação (D-042). `PaidAt`/`paidByUserId` voltam a ser calculados como em `POST` (último pagamento registrado que liquidou a conta).
+- **Validação:** `payment` e `recurrence` inválidos → `400 validation_error` com `errors["payment.paymentDate"]`, `errors["recurrence.frequency"]` etc.; receita (`type: "Income"`), pagamento acima do valor, grupo arquivado → `422`.
+- **Exclusão de ocorrência:** permitida ao criador sem pagamentos; `series.total` continua sendo o total original. A série é removida quando a última ocorrência é excluída. A notificação de criação da série referencia a 1ª ocorrência (excluí-la remove a notificação por cascata, D-045).
+- **Notificações:** a criação com `payment` gera duas notificações por destinatário (criação, `amount` = valor da conta; pagamento, `amount` = principal + juros).
+- **Sem coluna `transaction_type` em `notifications`:** o DTO continua com `type: 'Expense'` fixo.
+

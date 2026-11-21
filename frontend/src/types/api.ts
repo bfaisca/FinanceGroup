@@ -270,7 +270,7 @@ export interface TransactionDetailDto extends TransactionDto {
 }
 
 export type TransactionHistoryAction =
-  'Created' | 'Updated' | 'PaymentAdded' | 'PaymentRemoved' | 'Canceled' | 'Reopened'
+  'Created' | 'Updated' | 'PaymentAdded' | 'PaymentUpdated' | 'PaymentRemoved' | 'Canceled' | 'Reopened'
 
 export interface TransactionHistoryEntryDto {
   id: Uuid

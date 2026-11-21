@@ -12,27 +12,33 @@ describe('notificationText', () => {
     )
   })
 
-  it('nova receita', () => {
+  it('despesa recorrente (uma notificação por série) mostra a quantidade e o valor de cada ocorrência', () => {
     const n = makeNotification({
-      transaction: { id: 't2', description: 'Aluguel', type: 'Income', amount: 1500.5 },
+      transaction: { id: 't3', description: 'IPTU', type: 'Expense', amount: 500, seriesOccurrences: 10 },
     })
-    expect(nbsp(notificationText(n))).toBe('Brendo lançou uma nova receita em Casa: Aluguel (R$ 1.500,50)')
+    expect(nbsp(notificationText(n))).toBe('Brendo lançou uma despesa recorrente em Casa: IPTU (10x de R$ 500,00)')
   })
 
-  it('pagamento de despesa usa "pagou" e o valor do pagamento', () => {
-    const n = makeNotification({
-      type: 'GroupPaymentRegistered',
-      transaction: { id: 't1', description: 'Mercado', type: 'Expense', amount: 100 },
+  it('série com 1 ocorrência ou sem `seriesOccurrences` usa o texto de despesa simples', () => {
+    const single = makeNotification({
+      transaction: { id: 't3', description: 'IPTU', type: 'Expense', amount: 500, seriesOccurrences: 1 },
     })
-    expect(nbsp(notificationText(n))).toBe('Brendo pagou R$ 100,00 de Mercado em Casa')
+    expect(nbsp(notificationText(single))).toBe('Brendo lançou uma nova despesa em Casa: IPTU (R$ 500,00)')
   })
 
-  it('pagamento de receita usa "recebeu"', () => {
+  it('pagamento usa "pagou" e o valor TOTAL pago (principal + juros)', () => {
     const n = makeNotification({
       type: 'GroupPaymentRegistered',
-      transaction: { id: 't2', description: 'Aluguel', type: 'Income', amount: 100 },
+      transaction: { id: 't1', description: 'Mercado', type: 'Expense', amount: 523.5, seriesOccurrences: null },
     })
-    expect(nbsp(notificationText(n))).toBe('Brendo recebeu R$ 100,00 de Aluguel em Casa')
+    expect(nbsp(notificationText(n))).toBe('Brendo pagou R$ 523,50 de Mercado em Casa')
+  })
+
+  it('nunca fala em receita nem "recebeu"', () => {
+    for (const type of ['GroupTransactionCreated', 'GroupPaymentRegistered'] as const) {
+      const text = notificationText(makeNotification({ type }))
+      expect(text).not.toMatch(/receita|recebeu/i)
+    }
   })
 
   it('convite', () => {

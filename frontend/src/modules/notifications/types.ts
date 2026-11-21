@@ -1,7 +1,7 @@
 /**
  * Tipos espelhando docs/API_CONTRACTS.md §17 (Etapa 4b — Notificações). Não adicionar campos fora do contrato.
  */
-import type { GroupInvitationStatus, IsoDateTimeString, TransactionType, Uuid } from '@/types/api'
+import type { GroupInvitationStatus, IsoDateTimeString, Uuid } from '@/types/api'
 
 export type NotificationType = 'GroupTransactionCreated' | 'GroupPaymentRegistered' | 'GroupInvitationReceived'
 
@@ -18,10 +18,15 @@ export interface NotificationDto {
   transaction: {
     id: Uuid
     description: string
-    /** Tipo da movimentação. */
-    type: TransactionType
-    /** `GroupTransactionCreated`: valor da movimentação; `GroupPaymentRegistered`: valor do pagamento. */
+    /** Grupos só têm despesas (D-046). */
+    type: 'Expense'
+    /**
+     * `GroupTransactionCreated`: valor da movimentação (de cada ocorrência);
+     * `GroupPaymentRegistered`: valor TOTAL do pagamento (principal + juros).
+     */
     amount: number
+    /** `GroupTransactionCreated` de uma recorrência: total de ocorrências criadas (1 notificação por série). */
+    seriesOccurrences: number | null
   } | null
   /** Somente em `GroupInvitationReceived`. */
   invitation: {

@@ -14,6 +14,8 @@ import TransactionAmount from '@/modules/transactions/components/TransactionAmou
 import TransactionStatusChip from '@/modules/transactions/components/TransactionStatusChip.vue'
 import { formatCurrency, formatDate } from '@/utils/format'
 import type { GroupTransactionDto } from '../types'
+import GroupPaidSummary from './GroupPaidSummary.vue'
+import GroupSeriesBadge from './GroupSeriesBadge.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -86,7 +88,7 @@ function summary(tx: GroupTransactionDto): string {
       :description="
         filtered
           ? 'Nenhum resultado para os filtros selecionados. Ajuste ou limpe os filtros.'
-          : 'Cadastre receitas e despesas compartilhadas. Todos os participantes do grupo poderão vê-las.'
+          : 'Cadastre as despesas compartilhadas. Todos os participantes do grupo poderão vê-las.'
       "
     >
       <slot name="empty-actions" />
@@ -119,6 +121,7 @@ function summary(tx: GroupTransactionDto): string {
             >
               {{ data.description }}
             </button>
+            <GroupSeriesBadge v-if="data.series" :series="data.series" class="gtx-list__series" />
             <CategoryBadge
               class="gtx-list__category"
               :name="data.categoryName"
@@ -142,6 +145,9 @@ function summary(tx: GroupTransactionDto): string {
         <Column field="amount" header="Valor" sortable header-class="gtx-list__right" body-class="gtx-list__right">
           <template #body="{ data }: { data: GroupTransactionDto }">
             <TransactionAmount :amount="data.amount" :type="data.type" />
+            <small v-if="data.totalPaid > 0" class="gtx-list__remaining">
+              <GroupPaidSummary :amount="data.amount" :paid="data.totalPaid" :interest="data.interestPaid" />
+            </small>
             <small v-if="showRemaining(data)" class="gtx-list__remaining">
               Restante {{ formatCurrency(data.remainingAmount) }}
             </small>
@@ -158,7 +164,9 @@ function summary(tx: GroupTransactionDto): string {
             @click="emit('open', tx)"
           >
             <span class="gtx-card__row">
-              <span class="gtx-card__title">{{ tx.description }}</span>
+              <span class="gtx-card__title"
+                >{{ tx.description }} <GroupSeriesBadge v-if="tx.series" :series="tx.series"
+              /></span>
               <TransactionAmount :amount="tx.amount" :type="tx.type" />
             </span>
             <span class="gtx-card__row">
@@ -174,6 +182,12 @@ function summary(tx: GroupTransactionDto): string {
               <span>Cadastrada por: {{ tx.createdBy.name }}</span>
               <span>Data: {{ formatDate(tx.transactionDate) }}</span>
               <span v-if="tx.dueDate">Vencimento: {{ formatDate(tx.dueDate) }}</span>
+              <GroupPaidSummary
+                v-if="tx.totalPaid > 0"
+                :amount="tx.amount"
+                :paid="tx.totalPaid"
+                :interest="tx.interestPaid"
+              />
               <span v-if="showRemaining(tx)">Restante: {{ formatCurrency(tx.remainingAmount) }}</span>
             </span>
           </button>
@@ -222,6 +236,11 @@ function summary(tx: GroupTransactionDto): string {
 
 .gtx-list__link:hover {
   text-decoration: underline;
+}
+
+.gtx-list__series {
+  display: inline-block;
+  margin-top: 0.25rem;
 }
 
 .gtx-list__category {

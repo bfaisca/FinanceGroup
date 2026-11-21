@@ -17,18 +17,20 @@ internal sealed class NotificationConfiguration : IEntityTypeConfiguration<Notif
             t.HasCheckConstraint(
                 "ck_notifications_shape",
                 "(type IN ('GroupTransactionCreated','GroupPaymentRegistered') " +
-                "AND transaction_id IS NOT NULL AND transaction_description IS NOT NULL AND transaction_type IS NOT NULL " +
+                "AND transaction_id IS NOT NULL AND transaction_description IS NOT NULL " +
                 "AND amount IS NOT NULL AND amount > 0 AND invitation_id IS NULL " +
                 "AND (actor_user_id IS NULL OR actor_user_id <> recipient_user_id)) " +
                 "OR (type = 'GroupInvitationReceived' " +
                 "AND invitation_id IS NOT NULL AND transaction_id IS NULL AND transaction_description IS NULL " +
-                "AND transaction_type IS NULL AND amount IS NULL)");
+                "AND amount IS NULL AND series_occurrences IS NULL)");
+            t.HasCheckConstraint(
+                "ck_notifications_series_occurrences",
+                "series_occurrences IS NULL OR (type = 'GroupTransactionCreated' AND series_occurrences BETWEEN 2 AND 60)");
         });
         builder.HasKey(n => n.Id);
         builder.Property(n => n.Id).ValueGeneratedNever();
         builder.Property(n => n.Type).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(n => n.TransactionDescription).HasMaxLength(Transaction.DescriptionMaxLength);
-        builder.Property(n => n.TransactionType).HasConversion<string>().HasMaxLength(16);
         builder.Property(n => n.Amount).HasPrecision(18, 2);
         builder.Property(n => n.CreatedAt).IsRequired();
         builder.Ignore(n => n.IsRead);

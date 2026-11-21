@@ -37,14 +37,15 @@ public static class GroupSupport
 
     public static object GroupTxBody(
         string description,
-        string type,
         decimal amount,
         Guid categoryId,
         DateOnly date,
         DateOnly? due = null,
         string? status = null,
-        string? notes = null) =>
-        new { description, type, amount, categoryId, transactionDate = date, dueDate = due, status, notes };
+        string? notes = null,
+        object? payment = null,
+        object? recurrence = null) =>
+        new { description, amount, categoryId, transactionDate = date, dueDate = due, status, notes, payment, recurrence };
 
     public static async Task<GroupTransactionDetailDto> CreateGroupTxAsync(
         this FinancialHarness h,
@@ -53,12 +54,15 @@ public static class GroupSupport
         string description,
         decimal amount,
         DateOnly? date = null,
-        string type = "Expense",
         Guid? categoryId = null,
-        DateOnly? due = null)
+        DateOnly? due = null,
+        object? payment = null,
+        object? recurrence = null)
     {
-        var category = categoryId ?? await h.CategoryIdAsync(user, type == "Expense" ? "Alimentação" : "Salário", type == "Expense" ? CategoryType.Expense : CategoryType.Income);
-        var response = await user.Post($"/api/v1/groups/{groupId}/transactions", GroupTxBody(description, type, amount, category, date ?? h.Today, due));
+        var category = categoryId ?? await h.CategoryIdAsync(user, "Alimentação", CategoryType.Expense);
+        var response = await user.Post(
+            $"/api/v1/groups/{groupId}/transactions",
+            GroupTxBody(description, amount, category, date ?? h.Today, due, payment: payment, recurrence: recurrence));
         return await ApiUser.Read<GroupTransactionDetailDto>(response, HttpStatusCode.Created);
     }
 
@@ -69,11 +73,21 @@ public static class GroupSupport
         Guid transactionId,
         decimal amount,
         DateOnly? date = null,
-        Guid? accountId = null)
+        Guid? accountId = null,
+        decimal? interest = null)
     {
         var response = await user.Post(
-            $"/api/v1/groups/{groupId}/transactions/{transactionId}/payments", new { amount, paymentDate = date ?? h.Today, accountId });
+            $"/api/v1/groups/{groupId}/transactions/{transactionId}/payments",
+            new { amount, interestAmount = interest, paymentDate = date ?? h.Today, accountId });
         return await ApiUser.Read<GroupTransactionDetailDto>(response, HttpStatusCode.Created);
+    }
+
+    /// <summary>Todas as ocorrências/despesas do grupo, da mais antiga para a mais nova.</summary>
+    public static async Task<List<GroupTransactionDto>> ListGroupTxAsync(this FinancialHarness h, ApiUser user, Guid groupId, string query = "")
+    {
+        var page = await user.GetOk<FinanceApp.Application.Common.PagedResult<GroupTransactionDto>>(
+            $"/api/v1/groups/{groupId}/transactions?sort=transactionDate&pageSize=100{(query.Length > 0 ? "&" + query : string.Empty)}");
+        return page.Items.ToList();
     }
 
     /// <summary>Altera o relógio de uma regra direto no banco (ex.: forçar a expiração de um convite).</summary>
