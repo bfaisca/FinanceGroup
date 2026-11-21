@@ -24,7 +24,6 @@ const ariaLabel = computed(() =>
 <template>
   <section class="surface-card paid-by" aria-labelledby="paid-by-title" data-testid="paid-by-card">
     <h3 id="paid-by-title" class="report-title">{{ PAID_BY_COPY.title }}</h3>
-    <p class="paid-by__subtitle">{{ PAID_BY_COPY.subtitle }}</p>
 
     <ChartPanel
       :option="option"
@@ -77,12 +76,6 @@ const ariaLabel = computed(() =>
 </template>
 
 <style scoped>
-.paid-by__subtitle {
-  margin: 0 0 1rem;
-  font-size: 0.875rem;
-  color: var(--gf-text-muted);
-}
-
 .paid-by__legend {
   list-style: none;
   margin: 1rem 0 0;

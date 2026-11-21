@@ -459,7 +459,7 @@ describe('dashboard helpers', () => {
 
   it('textos: "Contas Pagas" curto e aviso de não-dívida', () => {
     expect(PAID_BY_COPY.title).toBe('Contas Pagas')
-    expect(PAID_BY_COPY.subtitle).toBe('Quanto cada pessoa pagou (inclui juros/multa).')
+    expect(PAID_BY_COPY).toEqual({ title: 'Contas Pagas' })
     expect(NOT_DEBT_NOTICE).toContain('não representam dívida')
   })
 })

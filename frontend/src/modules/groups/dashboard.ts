@@ -7,10 +7,9 @@ import type { GroupDashboardDto, GroupPaidByItemDto } from './types'
 export const NOT_DEBT_NOTICE =
   'Os percentuais são só indicadores: não representam dívida nem valor a acertar entre os participantes.'
 
-/** Textos do quadro "Contas Pagas" (D-034 emendada): título e uma linha curta, sem regra longa de cálculo. */
+/** Textos do quadro "Contas Pagas" (D-034 emendada): somente o título. */
 export const PAID_BY_COPY = {
   title: 'Contas Pagas',
-  subtitle: 'Quanto cada pessoa pagou (inclui juros/multa).',
 }
 
 export const PENDING_COLOR = '#d97706'

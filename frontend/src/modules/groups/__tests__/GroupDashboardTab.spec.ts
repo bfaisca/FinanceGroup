@@ -92,7 +92,7 @@ describe('GroupDashboardTab', () => {
 
     const card = wrapper.find('[data-testid="paid-by-card"]')
     expect(card.find('h3').text()).toBe('Contas Pagas')
-    expect(card.text()).toContain('Quanto cada pessoa pagou (inclui juros/multa).')
+    expect(card.text()).not.toContain('Quanto cada pessoa pagou')
     expect(card.text()).not.toContain('Regra de cálculo')
 
     const items = card.findAll('[data-testid="paid-by-item"]')
