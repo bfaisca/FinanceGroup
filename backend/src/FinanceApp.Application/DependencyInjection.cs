@@ -6,6 +6,7 @@ using FinanceApp.Application.Dashboard;
 using FinanceApp.Application.Emails;
 using FinanceApp.Application.Groups;
 using FinanceApp.Application.Installments;
+using FinanceApp.Application.Notifications;
 using FinanceApp.Application.Recurrences;
 using FinanceApp.Application.Reports;
 using FinanceApp.Application.Transactions;
@@ -40,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<GroupInvitationService>();
         services.AddScoped<GroupTransactionService>();
         services.AddScoped<GroupDashboardService>();
+        services.AddScoped<NotificationService>();
         return services;
     }
 }

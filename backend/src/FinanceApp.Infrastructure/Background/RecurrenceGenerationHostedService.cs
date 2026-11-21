@@ -1,6 +1,7 @@
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Options;
 using FinanceApp.Application.Recurrences;
+using FinanceApp.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -50,6 +51,9 @@ public sealed partial class RecurrenceGenerationHostedService(
             var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
             var created = await generator.GenerateAllAsync(clock.Today, horizonMonths, cancellationToken).ConfigureAwait(false);
             LogRun(created);
+
+            // Manutenção periódica (D-044): retenção de notificações lidas. Falha aqui não invalida a geração acima.
+            await PurgeNotificationsAsync(scope.ServiceProvider, clock, cancellationToken).ConfigureAwait(false);
             return created;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -60,6 +64,29 @@ public sealed partial class RecurrenceGenerationHostedService(
         {
             LogFailure(ex);
             return 0;
+        }
+    }
+
+    private async Task PurgeNotificationsAsync(IServiceProvider services, IDateTimeProvider clock, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var db = services.GetRequiredService<AppDbContext>();
+            var removed = await NotificationRetention.PurgeReadAsync(db, clock.UtcNow, cancellationToken).ConfigureAwait(false);
+            if (removed > 0)
+            {
+                LogNotificationsPurged(removed);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // A manutenção é oportunista: registra e tenta de novo na próxima execução.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogNotificationsPurgeFailure(ex);
         }
     }
 
@@ -83,6 +110,12 @@ public sealed partial class RecurrenceGenerationHostedService(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Geração de recorrências concluída: {Created} ocorrências criadas.")]
     private partial void LogRun(int created);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Retenção de notificações: {Removed} notificações lidas há mais de 90 dias removidas.")]
+    private partial void LogNotificationsPurged(int removed);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Falha na retenção de notificações; nova tentativa na próxima execução.")]
+    private partial void LogNotificationsPurgeFailure(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Falha na geração de recorrências; nova tentativa na próxima execução.")]
     private partial void LogFailure(Exception exception);

@@ -749,6 +749,105 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Notifications.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
+                    b.Property<Guid?>("InvitationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invitation_id");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_user_id");
+
+                    b.Property<string>("TransactionDescription")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("transaction_description");
+
+                    b.Property<Guid?>("TransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transaction_id");
+
+                    b.Property<string>("TransactionType")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("transaction_type");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("type");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("ActorUserId")
+                        .HasDatabaseName("ix_notifications_actor_user_id");
+
+                    b.HasIndex("GroupId")
+                        .HasDatabaseName("ix_notifications_group_id");
+
+                    b.HasIndex("InvitationId")
+                        .HasDatabaseName("ix_notifications_invitation_id");
+
+                    b.HasIndex("ReadAt")
+                        .HasDatabaseName("ix_notifications_read_at")
+                        .HasFilter("read_at IS NOT NULL");
+
+                    b.HasIndex("RecipientUserId")
+                        .HasDatabaseName("ix_notifications_recipient_user_id_unread")
+                        .HasFilter("read_at IS NULL");
+
+                    b.HasIndex("TransactionId")
+                        .HasDatabaseName("ix_notifications_transaction_id");
+
+                    b.HasIndex("RecipientUserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_notifications_recipient_user_id_created_at");
+
+                    b.HasIndex("RecipientUserId", "InvitationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_notifications_recipient_user_id_invitation_id")
+                        .HasFilter("invitation_id IS NOT NULL");
+
+                    b.ToTable("notifications", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notifications_shape", "(type IN ('GroupTransactionCreated','GroupPaymentRegistered') AND transaction_id IS NOT NULL AND transaction_description IS NOT NULL AND transaction_type IS NOT NULL AND amount IS NOT NULL AND amount > 0 AND invitation_id IS NULL AND (actor_user_id IS NULL OR actor_user_id <> recipient_user_id)) OR (type = 'GroupInvitationReceived' AND invitation_id IS NOT NULL AND transaction_id IS NULL AND transaction_description IS NULL AND transaction_type IS NULL AND amount IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Recurrences.RecurrenceRule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1349,6 +1448,41 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("CreditCard");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Notifications.Notification", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_notifications_users_actor_user_id");
+
+                    b.HasOne("FinanceApp.Domain.Groups.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_groups_group_id");
+
+                    b.HasOne("FinanceApp.Domain.Groups.GroupInvitation", null)
+                        .WithMany()
+                        .HasForeignKey("InvitationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_notifications_group_invitations_invitation_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_users_recipient_user_id");
+
+                    b.HasOne("FinanceApp.Domain.Transactions.Transaction", null)
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_notifications_transactions_transaction_id");
                 });
 
             modelBuilder.Entity("FinanceApp.Domain.Recurrences.RecurrenceRule", b =>

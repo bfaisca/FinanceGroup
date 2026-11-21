@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import MockAdapter from 'axios-mock-adapter'
+import { http } from '@/services/http'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -51,7 +53,13 @@ async function mountLayout() {
 }
 
 describe('AppLayout', () => {
+  let mock: MockAdapter
+  beforeEach(() => {
+    mock = new MockAdapter(http)
+    mock.onGet('/notifications/unread-count').reply(200, { count: 3 })
+  })
   afterEach(() => {
+    mock.restore()
     document.body.innerHTML = ''
     document.documentElement.classList.remove(DARK_MODE_CLASS)
   })
@@ -83,6 +91,15 @@ describe('AppLayout', () => {
     expect(document.documentElement.classList.contains(DARK_MODE_CLASS)).toBe(true)
     expect(window.localStorage.getItem('gf-theme')).toBe('dark')
     expect(wrapper.find('[aria-label="Ativar tema claro"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('mostra o sino com o contador de não lidas no cabeçalho', async () => {
+    const { wrapper } = await mountLayout()
+
+    expect(wrapper.find('[data-testid="notification-bell"]').attributes('aria-label')).toBe('Notificações, 3 não lidas')
+    expect(wrapper.find('[data-testid="notification-badge"]').text()).toBe('3')
+    expect(mock.history.get.filter((r) => r.url === '/notifications/unread-count')).toHaveLength(1)
     wrapper.unmount()
   })
 })

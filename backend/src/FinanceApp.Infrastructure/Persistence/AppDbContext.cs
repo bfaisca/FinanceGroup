@@ -6,6 +6,7 @@ using FinanceApp.Domain.Categories;
 using FinanceApp.Domain.CreditCards;
 using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Installments;
+using FinanceApp.Domain.Notifications;
 using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
@@ -45,6 +46,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
 
     public DbSet<GroupInvitation> GroupInvitations => Set<GroupInvitation>();
+
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {

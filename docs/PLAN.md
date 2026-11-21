@@ -22,7 +22,7 @@ Contas + snapshots + saldo projetado; categorias (seed padrão, personalizadas, 
 Contratos: `API_CONTRACTS.md` §10–15 · Regras: D-025 a D-029, `STATE_MACHINE.md`.
 Cartões (regra D-003); parcelamentos (diferença de centavos na primeira parcela (D-026)); recorrências (horizonte D-010, idempotência); relatórios.
 
-## Etapa 4 — Grupos ✅
+## Etapa 4 — Grupos ✅ (inclui 4b: notificações no app)
 Grupos, convites por token (hash), participantes (saída preserva histórico), movimentações compartilhadas (DTO sem dados privados), dashboard consolidado (participação por autor **e** por pagador, separadas).
 
 ## Etapa 5 — Qualidade ⬜

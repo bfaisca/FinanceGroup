@@ -1,6 +1,7 @@
 using FinanceApp.Application.Common.Options;
 using FinanceApp.Application.Emails;
 using FinanceApp.Application.Groups;
+using FinanceApp.Application.Notifications;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Domain.Categories;
 using FinanceApp.Domain.Users;
@@ -37,6 +38,7 @@ internal sealed class GroupTestKit : IDisposable
             new GroupTransactionListQueryValidator(), new CreateGroupTransactionRequestValidator(),
             new UpdateGroupTransactionRequestValidator(), new AddPaymentRequestValidator(Clock));
         Dashboard = new GroupDashboardService(Db, Access, new GroupDashboardQueryValidator());
+        Notifications = new NotificationService(Db, CurrentUser, Clock, Access, Invitations, new NotificationListQueryValidator());
     }
 
     public AppDbContext Db { get; }
@@ -58,6 +60,8 @@ internal sealed class GroupTestKit : IDisposable
     public GroupTransactionService Transactions { get; }
 
     public GroupDashboardService Dashboard { get; }
+
+    public NotificationService Notifications { get; }
 
     public DateOnly Today => Clock.Today;
 

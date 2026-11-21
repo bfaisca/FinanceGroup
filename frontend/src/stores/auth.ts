@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { authService } from '@/modules/auth/services/authService'
+import { useNotificationsStore } from '@/modules/notifications/store'
 import { userService } from '@/modules/settings/services/userService'
 import { useAccountsStore } from '@/stores/accounts'
 import { useCategoriesStore } from '@/stores/categories'
@@ -40,6 +41,7 @@ export const useAuthStore = defineStore('auth', () => {
     useAccountsStore().reset()
     useCategoriesStore().reset()
     useCreditCardsStore().reset()
+    useNotificationsStore().reset()
     accessToken.value = null
     accessTokenExpiresAt.value = null
     user.value = null

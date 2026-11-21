@@ -74,6 +74,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Convite para grupo' },
       },
       {
+        path: 'notifications',
+        name: 'notifications',
+        component: () => import('@/modules/notifications/pages/NotificationsPage.vue'),
+        meta: { title: 'Notificações' },
+      },
+      {
         path: 'reports',
         name: 'reports',
         component: () => import('@/modules/reports/pages/ReportsPage.vue'),

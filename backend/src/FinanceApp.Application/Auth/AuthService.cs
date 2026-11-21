@@ -3,6 +3,7 @@ using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Application.Common.Options;
 using FinanceApp.Application.Common.Validation;
 using FinanceApp.Application.Emails;
+using FinanceApp.Application.Notifications;
 using FinanceApp.Application.Users;
 using FinanceApp.Domain.Auth;
 using FinanceApp.Domain.Users;
@@ -52,6 +53,8 @@ public sealed partial class AuthService(
         var now = clock.UtcNow;
         var user = User.Create(request.Name, email, passwordHasher.Hash(request.Password), now);
         db.Users.Add(user);
+        // D-043d: convites pendentes (não expirados) para este e-mail viram notificações, na mesma transação do cadastro.
+        await NotificationRecorder.AddForNewUserAsync(db, user, now, cancellationToken).ConfigureAwait(false);
         var result = IssueSession(user, Guid.NewGuid(), ipAddress, now);
 
         try

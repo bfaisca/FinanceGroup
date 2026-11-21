@@ -2,6 +2,7 @@ using FinanceApp.Application.Common;
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Application.Common.Validation;
+using FinanceApp.Application.Notifications;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Domain.Accounts;
 using FinanceApp.Domain.Categories;
@@ -76,6 +77,8 @@ public sealed class GroupTransactionService(
             clock.UtcNow);
 
         db.Transactions.Add(transaction);
+        // D-042a: notifica os demais membros ativos na mesma transação da criação.
+        await NotificationRecorder.AddTransactionCreatedAsync(db, transaction, groupId, membership.UserId, clock.UtcNow, cancellationToken).ConfigureAwait(false);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return await GetDetailAsync(membership, transaction.Id, cancellationToken).ConfigureAwait(false);
     }
@@ -191,6 +194,8 @@ public sealed class GroupTransactionService(
         var payment = transaction.AddPayment(
             membership.UserId, request.Amount, request.PaymentDate!.Value, clock.Today, account, request.PaymentMethod, clock.UtcNow);
         db.TransactionPayments.Add(payment);
+        // D-042b: notifica os demais membros ativos (valor = o do pagamento) na mesma transação do pagamento.
+        await NotificationRecorder.AddPaymentRegisteredAsync(db, transaction, groupId, membership.UserId, payment.Amount, clock.UtcNow, cancellationToken).ConfigureAwait(false);
 
         // Concorrência otimista (xmin): pagamentos simultâneos de membros diferentes nunca ultrapassam o valor (o perdedor recebe 409).
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

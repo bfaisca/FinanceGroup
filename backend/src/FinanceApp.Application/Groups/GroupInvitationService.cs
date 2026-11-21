@@ -2,6 +2,7 @@ using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Application.Common.Validation;
 using FinanceApp.Application.Emails;
+using FinanceApp.Application.Notifications;
 using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Users;
 using FluentValidation;
@@ -75,6 +76,8 @@ public sealed partial class GroupInvitationService(
         var token = tokens.GenerateToken(TokenBytes);
         var invitation = GroupInvitation.Create(groupId, me.UserId, email, tokens.Hash(token), now);
         db.GroupInvitations.Add(invitation);
+        // D-043: notificação dentro do app na mesma transação do convite (o e-mail continua sendo enviado, D-031).
+        await NotificationRecorder.UpsertInvitationAsync(db, invitation, me.UserId, now, cancellationToken).ConfigureAwait(false);
         await SaveInvitationAsync(cancellationToken).ConfigureAwait(false);
 
         var emailSent = await TrySendAsync(invitation, group.Name, token, cancellationToken).ConfigureAwait(false);
@@ -92,6 +95,8 @@ public sealed partial class GroupInvitationService(
         var now = clock.UtcNow;
         var token = tokens.GenerateToken(TokenBytes);
         invitation.Renew(tokens.Hash(token), now);
+        // D-043: reenvio reaproveita a notificação existente (volta a ser não lida), sem duplicar.
+        await NotificationRecorder.UpsertInvitationAsync(db, invitation, me.UserId, now, cancellationToken).ConfigureAwait(false);
         await SaveInvitationAsync(cancellationToken).ConfigureAwait(false);
 
         var emailSent = await TrySendAsync(invitation, group.Name, token, cancellationToken).ConfigureAwait(false);
@@ -138,6 +143,33 @@ public sealed partial class GroupInvitationService(
     {
         var userId = currentUser.RequireUserId();
         var invitation = await FindByTokenAsync(token, tracked: true, cancellationToken).ConfigureAwait(false);
+        return await AcceptCoreAsync(userId, invitation, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DeclineAsync(string token, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.RequireUserId();
+        var invitation = await FindByTokenAsync(token, tracked: true, cancellationToken).ConfigureAwait(false);
+        await DeclineCoreAsync(userId, invitation, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Aceite pela notificação (D-043): sem token; as mesmas regras do aceite por e-mail.</summary>
+    internal async Task<GroupSummaryDto> AcceptByInvitationIdAsync(Guid invitationId, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.RequireUserId();
+        var invitation = await FindByIdAsync(invitationId, cancellationToken).ConfigureAwait(false);
+        return await AcceptCoreAsync(userId, invitation, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task DeclineByInvitationIdAsync(Guid invitationId, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.RequireUserId();
+        var invitation = await FindByIdAsync(invitationId, cancellationToken).ConfigureAwait(false);
+        await DeclineCoreAsync(userId, invitation, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<GroupSummaryDto> AcceptCoreAsync(Guid userId, GroupInvitation invitation, CancellationToken cancellationToken)
+    {
         var user = await GetCurrentUserAsync(userId, cancellationToken).ConfigureAwait(false);
         var group = await db.Groups.AsTracking().Include(g => g.Members)
             .FirstAsync(g => g.Id == invitation.GroupId, cancellationToken).ConfigureAwait(false);
@@ -153,6 +185,8 @@ public sealed partial class GroupInvitationService(
         }
 
         invitation.Accept(user.Email, now);
+        // D-044: aceitar marca a notificação do convite como lida, na mesma transação.
+        await NotificationRecorder.MarkInvitationReadAsync(db, userId, invitation.Id, now, cancellationToken).ConfigureAwait(false);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         LogInvitationAccepted(invitation.Id, group.Id);
 
@@ -160,15 +194,19 @@ public sealed partial class GroupInvitationService(
             group.Id, group.Name, group.Description, member.Role, group.ActiveMemberCount, group.IsActive, group.CreatedAt);
     }
 
-    public async Task DeclineAsync(string token, CancellationToken cancellationToken)
+    private async Task DeclineCoreAsync(Guid userId, GroupInvitation invitation, CancellationToken cancellationToken)
     {
-        var userId = currentUser.RequireUserId();
-        var invitation = await FindByTokenAsync(token, tracked: true, cancellationToken).ConfigureAwait(false);
         var user = await GetCurrentUserAsync(userId, cancellationToken).ConfigureAwait(false);
 
-        invitation.Decline(user.Email, clock.UtcNow);
+        var now = clock.UtcNow;
+        invitation.Decline(user.Email, now);
+        await NotificationRecorder.MarkInvitationReadAsync(db, userId, invitation.Id, now, cancellationToken).ConfigureAwait(false);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    private async Task<GroupInvitation> FindByIdAsync(Guid invitationId, CancellationToken cancellationToken) =>
+        await db.GroupInvitations.AsTracking().FirstOrDefaultAsync(i => i.Id == invitationId, cancellationToken).ConfigureAwait(false)
+        ?? throw new NotFoundException("Convite não encontrado.");
 
     // ------------------------------------------------------------------ internos
 

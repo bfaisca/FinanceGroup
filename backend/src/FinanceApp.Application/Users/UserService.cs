@@ -83,6 +83,7 @@ public sealed partial class UserService(
         var now = clock.UtcNow;
         await LeaveGroupsAsync(user.Id, now, cancellationToken).ConfigureAwait(false);
         await RemoveIndividualFinancialDataAsync(user.Id, cancellationToken).ConfigureAwait(false);
+        await RemoveNotificationsAsync(user.Id, cancellationToken).ConfigureAwait(false);
         user.Anonymize(now);
         await db.RevokeActiveRefreshTokensAsync(user.Id, now, RefreshTokenRevocationReason.AccountDeleted, cancellationToken).ConfigureAwait(false);
         var resetTokens = await db.PasswordResetTokens.Where(t => t.UserId == user.Id).ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -117,6 +118,16 @@ public sealed partial class UserService(
         {
             invitation.RevokeIfPending(now);
         }
+    }
+
+    /// <summary>
+    /// D-044/D-014: as notificações RECEBIDAS pelo usuário são apagadas. As notificações de terceiros em que ele é o ator
+    /// permanecem (são do histórico do grupo) e passam a exibir "Usuário removido", pois o nome é lido da conta anonimizada.
+    /// </summary>
+    private async Task RemoveNotificationsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var notifications = await db.Notifications.Where(n => n.RecipientUserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        db.Notifications.RemoveRange(notifications);
     }
 
     /// <summary>

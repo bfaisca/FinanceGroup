@@ -21,6 +21,7 @@ export function makeRouter(routes: RouteRecordRaw[] = []) {
     'recurrences',
     'reports',
     'groups',
+    'notifications',
   ]
   const defaults: RouteRecordRaw[] = names.map((name) => ({ path: `/${name}`, name, component: Blank }))
   defaults.push({ path: '/accounts/:id', name: 'account-detail', component: Blank })

@@ -225,3 +225,15 @@ Tipos: `GroupTransactionCreated` (nova movimentação de grupo), `GroupPaymentRe
 - Sem tempo real: o frontend atualiza o contador ao carregar o app, ao abrir o sino, ao trocar de rota e ao voltar o foco à aba (sem polling por timer).
 - Retenção: notificações lidas há mais de 90 dias são removidas pelo serviço de background já existente (junto à manutenção periódica) — se não houver rotina, deixar como pendência registrada.
 - Exclusão de conta (D-014/D-036): as notificações do usuário são apagadas.
+
+## D-045 — Detalhes de implementação das notificações — Proposta
+Escolhas conservadoras para o que D-041 a D-044 não detalham (sem alterar rotas ou DTOs):
+- **Mesma transação:** as notificações são adicionadas ao `DbContext` e persistidas no mesmo `SaveChanges` do evento (criar movimentação, registrar pagamento, criar/reenviar convite, cadastro). Não há fila nem tarefa assíncrona; se a gravação da notificação falhar, o evento também falha (é a garantia de D-042).
+- **Reenvio do convite:** além de voltar a ser não lida, a notificação reaproveitada tem `createdAt` atualizado (sobe ao topo da lista) e o ator passa a ser quem reenviou.
+- **Convite não gera notificação** se a conta com o e-mail já é membro ativo do grupo (reenvio) ou se a conta está inativa/anonimizada.
+- **Visibilidade em ações:** marcar como lida uma notificação de grupo da qual o usuário já não é membro ativo responde `404` (mesma regra da listagem). `read-all` só altera as notificações visíveis. Notificações de convite sempre são visíveis ao destinatário.
+- **`canRespond`** segue exatamente o §17 (Pending não expirado + e-mail da conta = e-mail do convite + não é membro ativo); não considera grupo arquivado: aceitar nesse caso responde `422` (D-037), recusar continua possível.
+- **Aceitar/recusar por token** (`/invitations/{token}/...`) também marca como lida a notificação do convite do mesmo usuário, se existir.
+- **Exclusão de movimentação de grupo** (só sem pagamentos) remove, por cascata, as notificações dela. Notificações em que o usuário excluído é o **ator** permanecem (histórico do grupo) e exibem "Usuário removido".
+- **Retenção:** `NotificationRetention.PurgeReadAsync` roda a cada execução do serviço de background existente (`RecurrenceGenerationHostedService`, mesmo intervalo e mesmo `Recurrence__BackgroundEnabled`); falha nela é apenas registrada. Notificações não lidas nunca expiram por tempo.
+

@@ -8,9 +8,12 @@ import BrandLogo from '@/components/layout/BrandLogo.vue'
 import ThemeToggle from '@/components/layout/ThemeToggle.vue'
 import UserMenu from '@/components/layout/UserMenu.vue'
 import { BREAKPOINTS, useMediaQuery } from '@/composables/useMediaQuery'
+import NotificationBell from '@/modules/notifications/components/NotificationBell.vue'
+import { useNotificationRefresh } from '@/modules/notifications/composables'
 import { NAV_ITEMS } from './navigation'
 
 const route = useRoute()
+useNotificationRefresh()
 const isTabletUp = useMediaQuery(BREAKPOINTS.tablet)
 const isDesktop = useMediaQuery(BREAKPOINTS.desktop)
 
@@ -76,6 +79,7 @@ watch(isTabletUp, (tabletUp) => {
           <BrandLogo />
         </RouterLink>
         <div class="app-topbar__spacer" />
+        <NotificationBell />
         <ThemeToggle />
         <UserMenu />
       </header>
