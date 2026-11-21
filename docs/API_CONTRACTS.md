@@ -674,6 +674,43 @@ interface GroupDashboardDto {
 ```
 `createdBy`/`paidBy` ordenados por maior valor total (despesa + receita) e depois por nome; incluem apenas quem tem valor no período.
 
+## 17. Notificações — `/api/v1/notifications` (Bearer) — Etapa 4b
+
+Regras: D-041 a D-044. Só o dono acessa as próprias notificações (de outro usuário → `404`).
+
+```ts
+type NotificationType = 'GroupTransactionCreated' | 'GroupPaymentRegistered' | 'GroupInvitationReceived';
+
+interface NotificationDto {
+  id: string; type: NotificationType;
+  createdAt: string; readAt: string | null; isRead: boolean;
+  group: { id: string; name: string };
+  actor: { userId: string; name: string } | null;       // "Usuário removido" se a conta foi excluída
+  transaction: {                                         // null em convites
+    id: string; description: string;
+    type: 'Income' | 'Expense';                          // tipo da movimentação
+    amount: number;                                      // GroupTransactionCreated: valor da movimentação; GroupPaymentRegistered: valor do pagamento
+  } | null;
+  invitation: {                                          // somente em GroupInvitationReceived
+    id: string;
+    status: GroupInvitationStatus;                       // derivado agora (Pending/Accepted/Declined/Revoked/Expired)
+    expiresAt: string;
+    canRespond: boolean;                                 // Pending + não expirado + e-mail da conta = e-mail do convite + não é membro
+  } | null;
+}
+```
+
+| Método e rota | Corpo / query | Resposta |
+|---|---|---|
+| `GET /notifications` | `page`, `pageSize` (padrão 20, máx 50), `unreadOnly` (padrão `false`) | `200 PagedResult<NotificationDto>` (mais recentes primeiro) |
+| `GET /notifications/unread-count` | — | `200 { count: number }` |
+| `POST /notifications/{id}/read` | — | `204` (idempotente) |
+| `POST /notifications/read-all` | — | `204` |
+| `POST /notifications/{id}/accept-invitation` | — | `200 GroupSummaryDto` (§16; marca como lida) — `422` expirado/revogado/já usado/já membro; `403` e-mail da conta diferente; `404` se a notificação não é de convite ou não é sua |
+| `POST /notifications/{id}/decline-invitation` | — | `204` (marca como lida; mesmas regras) |
+
+Navegação sugerida (frontend): movimentação → `/groups/{groupId}?tab=transactions` com o detalhe da movimentação; convite → ações Aceitar/Recusar na própria notificação.
+
 ## Changelog
 
 | Data | Versão | Alteração | Autor |
@@ -687,4 +724,4 @@ interface GroupDashboardDto {
 | 2026-11-20 | 1.2.1 | Esclarecimentos da implementação da Etapa 3 (**sem alterar rotas, DTOs ou códigos**; leitura mais literal do contrato): (1) nome de cartão duplicado (case-insensitive, por usuário) → `409 conflict`; (2) `PUT /transactions/{id}` de compra no cartão: `creditCardId` diferente do gravado → `422`, `null`/omitido é tolerado; `accountId` informado → `400` com `errors.accountId`; `dueDate` diferente do gravado → `400` com `errors.dueDate` (em parcela: `422`), repetir o valor gravado é tolerado; mudar `transactionDate` recalcula o vencimento pela fatura (D-025); (3) parcela: alterar `amount`/`transactionDate` → `422`; `DELETE` de parcela ou de ocorrência de recorrência → `422` (use cancelar / o plano / desativar a regra); `PUT` em ocorrência a marca como editada manualmente (preservada na regeneração, D-027); (4) parcelas: datas = `firstDate + i meses` com ajuste ao fim do mês sem deriva (31/jan → 28/fev → 31/mar); `Planned` se data > hoje, senão `Pending`; sem cartão `dueDate = transactionDate`; (5) `GET /installment-plans`: `status` é derivado das parcelas (Open = há parcela não cancelada em aberto; Canceled = todas canceladas; senão Completed), `sort` ∈ `firstDate, description, totalAmount, createdAt` (prefixo `-` desc.); (6) recorrências: `GET /recurrences` devolve array sem paginação; `startDate` até 366 dias no passado; `interval` 1–365 (em `Custom` = dias); `nextOccurrenceDate` = primeira data ≥ hoje do cronograma sem ocorrência paga/cancelada (`null` se inativa ou encerrada); `generatedCount` = ocorrências existentes; cartão/categoria/conta inativos fazem o gerador ignorar a regra (log) sem erro; (7) relatórios: base = movimentações **não canceladas** do usuário por `transactionDate`; `by-account` usa a conta da movimentação ou a do cartão, sem nenhuma → `accountId: null`, `accountName: "Sem conta"`; `by-payment-method` inclui `paymentMethod: null`; empates ordenados por nome; percentuais 0–100 com 2 casas (arredondamento comercial); `installments`: compromisso por `dueDate ?? transactionDate` do restante (`amount − paidAmount`) das parcelas não canceladas e em aberto, parcelas atrasadas somam no mês corrente, `plans` = planos `Open` por próximo vencimento; `recurrences`: somente ocorrências já geradas, não canceladas, com data > hoje e ≤ hoje + 12 meses, apenas regras ativas; `from`/`to` ausentes, `from > to` ou período > 366 dias → `400 validation_error` (`errors.from`/`errors.to`); `months` fora de 1–36 e `endMonth` fora de `YYYY-MM` → `400`; (8) exclusão da conta (`DELETE /users/me`) também apaga cartões, planos, regras e suas movimentações na mesma transação; (9) novas variáveis de ambiente `Recurrence__HorizonMonths` (12), `Recurrence__GenerationIntervalMinutes` (360) e `Recurrence__BackgroundEnabled` (true) | Backend |
 | 2026-11-20 | 1.3 | Etapa 4: grupos, convites, membros, movimentações de grupo, pagamentos por membro e dashboard do grupo (seção 16; aditivo). Decisões D-030 a D-036 | Coordenação (backend implementa) |
 | 2026-11-20 | 1.3.1 | Esclarecimentos da implementação da Etapa 4 (**sem alterar rotas, DTOs ou códigos**): (1) `permissions.canCancel` da movimentação de grupo também habilita `reopen`; `payments[].canRemove` só é `true` para o pagador, com grupo ativo e movimentação não cancelada; (2) grupo arquivado é somente leitura exceto `unarchive` e `leave` (demais mutações e aceitar convite → `422 business_rule_violation`, D-037); (3) `GroupInvitationDto.emailSent` só vem em `POST` de convite e `resend` (omitido nas listagens); (4) `GET /invitations/{token}`, `accept` e `decline` exigem autenticação e usam a política de rate limit `Auth`; aceitar com e-mail de outra conta → `403`; token inexistente/substituído → `404`; (5) em `expensesByCategory[].children[].percent` o percentual é sobre o total da categoria-raiz (como em `GET /reports/by-category`), não sobre o total de despesas do grupo; (6) alterar o papel para o mesmo papel atual é idempotente (`200`); (7) `memberId` que não é de membro ativo do grupo → `404`; (8) `DELETE /users/me`: categorias personalizadas usadas por movimentações de grupo são desativadas em vez de apagadas (D-038); (9) `accountId` enviado em movimentação de grupo é ignorado e nunca persistido; conta de outro usuário em pagamento de grupo → `400`/`404` | Backend |
-
+| 2026-11-21 | 1.4 | Etapa 4b: notificações dentro do app (seção 17, aditiva); decisões D-041 a D-044 | Coordenação (backend implementa) |

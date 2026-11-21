@@ -198,3 +198,30 @@ Pagamentos de grupo vinculados a uma movimentação `Canceled` não entram no sa
 ## D-040 — Sair de grupo arquivado e reativação — Proposta
 O membro (inclusive Admin) pode sair de um grupo arquivado; o Owner não pode sair (precisa transferir/excluir conta). Quem retorna por novo convite reaproveita a mesma linha de `group_members` com papel `Member`, recuperando a edição das próprias movimentações antigas (autoria é por `created_by_user_id`).
 
+
+---
+
+# Etapa 4b — Notificações no app
+
+## D-041 — Notificações básicas dentro do app — Aceita (autorizada pelo usuário em 2026-11-21)
+CLAUDE.md §17 deixa "notificações avançadas" fora do MVP; o usuário autorizou expressamente **notificações básicas dentro da plataforma**, limitadas a: sino com contador, lista, marcar como lida e ação de aceitar/recusar convite. **Fora do escopo** (continuam proibidos sem nova autorização): push, e-mail de atividade/resumo, preferências por grupo/tipo, websockets/tempo real.
+
+## D-042 — Eventos e destinatários — Aceita
+Tipos: `GroupTransactionCreated` (nova movimentação de grupo), `GroupPaymentRegistered` (pagamento/recebimento registrado) e `GroupInvitationReceived` (convite). Edição, cancelamento, reabertura e entrada/saída de membros **não** notificam nesta versão.
+- Destinatários de eventos de movimentação/pagamento: todos os **membros ativos** do grupo no momento do evento, **exceto quem executou a ação**.
+- A notificação é criada na **mesma transação** do evento (se o evento falhar, nada é notificado).
+- Guarda um **instantâneo** do necessário (descrição, valor do evento — da movimentação ou do pagamento —, tipo, ator, grupo); o texto é montado pelo frontend. O nome do ator é lido da conta na consulta (conta excluída → "Usuário removido").
+- Privacidade: a notificação só carrega o que já é visível ao grupo (D-035); nunca conta, cartão ou dados individuais.
+
+## D-043 — Convite dentro da plataforma — Aceita
+- Ao criar ou reenviar um convite, se já existe conta ativa com o **mesmo e-mail** (sem diferenciar maiúsculas), cria-se uma notificação `GroupInvitationReceived` para essa conta; **o e-mail continua sendo enviado** (D-031).
+- Quem cria a conta depois, com o e-mail convidado, recebe as notificações dos convites `Pending` não expirados ao se **cadastrar** (por e-mail igual, sem exigir verificação extra: o convite já exigia e-mail igual ao aceitar).
+- Aceitar/recusar pela notificação não usa token: `POST /notifications/{id}/accept-invitation|decline-invitation`, valido só para o dono da notificação e se o e-mail da conta ainda é o do convite. Mesmas regras de D-031 (expirado/revogado/já usado/já membro → 422). O estado do convite na notificação é **derivado ao consultar** (aceito por e-mail, revogado e expirado aparecem corretamente, sem ações).
+- Reenviar o convite invalida o token anterior mas não duplica a notificação pendente: reaproveita a existente (marca como não lida).
+
+## D-044 — Visibilidade, leitura e atualização — Técnica
+- Notificações de grupo só aparecem/contam enquanto o destinatário for **membro ativo** do grupo (saiu/removido → somem da lista e do contador, sem apagar o registro). Convites não dependem disso.
+- Marcar como lida: individual e todas. Aceitar/recusar convite marca a notificação como lida.
+- Sem tempo real: o frontend atualiza o contador ao carregar o app, ao abrir o sino, ao trocar de rota e ao voltar o foco à aba (sem polling por timer).
+- Retenção: notificações lidas há mais de 90 dias são removidas pelo serviço de background já existente (junto à manutenção periódica) — se não houver rotina, deixar como pendência registrada.
+- Exclusão de conta (D-014/D-036): as notificações do usuário são apagadas.
