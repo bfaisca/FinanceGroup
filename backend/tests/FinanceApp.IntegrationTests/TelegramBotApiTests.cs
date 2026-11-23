@@ -101,6 +101,19 @@ public class TelegramBotApiTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task PastingOnlyTheCode_AlsoLinks_WhenChatIsNotLinked()
+    {
+        var user = await h.NewUserAsync("Cola Bot");
+        var code = await ApiUser.Read<TelegramLinkCodeDto>(await user.Post("/api/v1/telegram/link-code"));
+        var chat = NewChat();
+
+        await SayAsync(chat, code.Code);
+
+        Assert.Contains("vinculada", factory.Telegram.Last.Text);
+        Assert.True((await user.GetOk<TelegramLinkStatusDto>("/api/v1/telegram/link")).Linked);
+    }
+
+    [Fact]
     public async Task NewCode_InvalidatesThePreviousOne()
     {
         var user = await h.NewUserAsync("Bia Bot");

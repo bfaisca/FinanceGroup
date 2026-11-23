@@ -99,9 +99,16 @@ public sealed partial class TelegramBotService(
         }
 
         var link = await FindLinkAsync(chatId, cancellationToken).ConfigureAwait(false);
+        if (link is null && LooksLikeLinkCode(value))
+        {
+            // Quem cola só o código (sem /vincular) também é atendido.
+            await LinkAsync(chatId, value, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (link is null)
         {
-            await client.SendMessageAsync(chatId, "Este chat ainda não está vinculado. No site, abra Configurações → Telegram, gere um código e envie aqui: /vincular CÓDIGO.", null, cancellationToken).ConfigureAwait(false);
+            await client.SendMessageAsync(chatId, "Este chat ainda não está vinculado. No site, abra Configurações → Telegram, gere um código e envie aqui o código (ou /vincular CÓDIGO).", null, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -302,6 +309,9 @@ public sealed partial class TelegramBotService(
             .ConfigureAwait(false);
         return rows.Select(c => (c.Id, c.Name)).ToList();
     }
+
+    private static bool LooksLikeLinkCode(string value) =>
+        value.Length == TelegramLinkService.CodeLength && value.All(char.IsAsciiLetterOrDigit);
 
     private static string FirstWord(string value)
     {
