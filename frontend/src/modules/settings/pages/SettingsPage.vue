@@ -2,15 +2,17 @@
 import PageHeader from '@/components/PageHeader.vue'
 import ProfileForm from '../components/ProfileForm.vue'
 import ChangePasswordForm from '../components/ChangePasswordForm.vue'
+import TelegramSection from '../components/TelegramSection.vue'
 import DeleteAccountSection from '../components/DeleteAccountSection.vue'
 </script>
 
 <template>
   <div>
-    <PageHeader title="Configurações" description="Gerencie seu perfil, sua senha e sua conta." />
+    <PageHeader title="Configurações" description="Gerencie seu perfil, sua senha, o Telegram e sua conta." />
     <div class="settings-grid">
       <ProfileForm />
       <ChangePasswordForm />
+      <TelegramSection />
       <DeleteAccountSection />
     </div>
   </div>

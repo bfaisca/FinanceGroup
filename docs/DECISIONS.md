@@ -276,3 +276,23 @@ Escolhas conservadoras para o que D-046 a D-049 não detalham (sem alterar rotas
 - **Notificações:** a criação com `payment` gera duas notificações por destinatário (criação, `amount` = valor da conta; pagamento, `amount` = principal + juros).
 - **Sem coluna `transaction_type` em `notifications`:** o DTO continua com `type: 'Expense'` fixo.
 
+
+---
+
+# Etapa 4d — Bot do Telegram (2026-11-23)
+
+## D-053 — Bot do Telegram: escopo, vínculo e segurança — Aceita (escolhas do usuário) / Proposta (detalhes)
+Escolhas do usuário: **só despesas individuais**; entrada por **texto simples com regras fixas** (sem IA, que segue fora do MVP); vínculo por **código gerado no site**; o bot **só lança despesa** (sem saldo, consultas, marcar como paga/conta ou notificações no Telegram).
+- Serviço externo novo (Bot API do Telegram), avaliado e autorizado pelo usuário. Sem biblioteca nova: `HttpClient` + webhook (compatível com a hospedagem gratuita que "dorme": o webhook acorda a API).
+- **Vínculo:** `telegram_links` (um por usuário e um por chat). Código de 8 caracteres (sem 0/O/1/I/L), **hash SHA-256**, uso único, 10 minutos; novo código invalida o anterior. Chat já vinculado a outra conta não pode ser revinculado sem `/desvincular`. Excluir a conta remove vínculo, códigos e pendências.
+- **Autenticidade do webhook:** segredo no cabeçalho `X-Telegram-Bot-Api-Secret-Token` (mínimo 16 caracteres, comparação em tempo constante); sem segredo válido → 404. Só chats privados são tratados.
+- **Identidade:** a despesa é criada como o usuário do **vínculo verificado** (chat → conta) por `CurrentUserOverride`, definido no servidor apenas durante a confirmação; nunca por dados do cliente. Mesmas validações e regras do `TransactionService`.
+- **Token do bot:** vem de `Telegram__BotToken`; os logs padrão do `HttpClient` são removidos (a URL da Bot API contém o token) e erros registram só o tipo da exceção. Conteúdo de mensagens não é registrado.
+
+## D-054 — Bot do Telegram: regras do lançamento — Proposta
+- **Interpretação:** exatamente um valor, no início ou no fim do texto (`45,90`, `45.90`, `R$ 1.234,56`, `1.500`); o resto é a descrição (até 120 caracteres, como em movimentações). Dois valores (primeiro e último) é ambíguo → o bot pede reenvio. Vírgula é o separador decimal; ponto com exatamente 3 dígitos depois é milhar.
+- **Padrões financeiros (não inventam regra nova):** data = hoje no fuso da aplicação (D-021), `status = Pending` (padrão da API), sem conta/cartão/forma de pagamento → **não afeta o saldo projetado** até o usuário vincular uma conta no site.
+- **Categoria:** escolhida em botões entre as categorias de despesa ativas do nível principal (padrão + personalizadas do usuário); subcategorias não aparecem.
+- **Pendência:** `telegram_pending_expenses` (id numérico curto cabe no `callback_data`), validade de 15 minutos, restrita ao usuário do chat; limpeza oportunista das vencidas.
+- **Falhas:** o webhook sempre responde 200 após autenticado; erros são registrados sem conteúdo e o usuário vê mensagem curta.
+

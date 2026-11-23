@@ -1,5 +1,6 @@
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Options;
+using FinanceApp.Application.Telegram;
 using FinanceApp.Infrastructure.Background;
 using FinanceApp.Infrastructure.Email;
 using FinanceApp.Infrastructure.Persistence;
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddValidatedOptions<AppOptions>(AppOptions.SectionName, o => o.Validate());
         services.AddValidatedOptions<SmtpOptions>(SmtpOptions.SectionName, o => o.Validate());
         services.AddValidatedOptions<RecurrenceOptions>(RecurrenceOptions.SectionName, o => o.Validate());
+        services.AddValidatedOptions<TelegramOptions>(TelegramOptions.SectionName, o => o.Validate());
 
         // Lido de forma tardia (no resolve) para respeitar overrides de configuração (ex.: testes).
         services.AddDbContext<AppDbContext>((sp, options) =>
@@ -44,6 +46,8 @@ public static class DependencyInjection
         services.AddSingleton<ISecureTokenService, SecureTokenService>();
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.AddHttpClient<ITelegramClient, FinanceApp.Infrastructure.Telegram.TelegramBotClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
+            .RemoveAllLoggers();
 
         // Geração periódica de ocorrências de recorrências (D-027); desligável por Recurrence__BackgroundEnabled.
         services.AddHostedService<RecurrenceGenerationHostedService>();

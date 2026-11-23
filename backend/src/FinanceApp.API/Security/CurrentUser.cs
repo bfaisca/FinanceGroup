@@ -5,11 +5,12 @@ using Microsoft.IdentityModel.JsonWebTokens;
 namespace FinanceApp.API.Security;
 
 /// <summary>Lê a identidade exclusivamente dos claims do JWT validado.</summary>
-internal sealed class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser
+internal sealed class CurrentUser(IHttpContextAccessor accessor, CurrentUserOverride userOverride) : ICurrentUser
 {
     public const string SessionIdClaim = "sid";
 
-    public Guid? UserId => ReadGuid(JwtRegisteredClaimNames.Sub);
+    // O override só é definido pelo webhook do Telegram, a partir do vínculo verificado (D-053); em requisições com JWT fica nulo.
+    public Guid? UserId => userOverride.UserId ?? ReadGuid(JwtRegisteredClaimNames.Sub);
 
     public Guid? SessionId => ReadGuid(SessionIdClaim);
 

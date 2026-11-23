@@ -68,8 +68,7 @@ async function onConfirm(): Promise<void> {
       poderá acessá-la novamente.
     </p>
     <p class="settings-section__description">
-      Nos históricos de grupos dos quais você participou (disponível em etapas futuras), você aparecerá como “Usuário
-      removido”.
+      Nos históricos de grupos dos quais você participou, você aparecerá como “Usuário removido”.
     </p>
     <div class="form-actions">
       <Button label="Excluir minha conta" icon="pi pi-trash" severity="danger" outlined @click="open" />

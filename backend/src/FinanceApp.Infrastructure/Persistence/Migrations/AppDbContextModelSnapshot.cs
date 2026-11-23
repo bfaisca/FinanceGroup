@@ -1009,6 +1009,118 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("chat_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_telegram_links");
+
+                    b.HasIndex("ChatId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_telegram_links_chat_id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_telegram_links_user_id");
+
+                    b.ToTable("telegram_links", (string)null);
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramLinkCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_telegram_link_codes");
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_telegram_link_codes_code_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_telegram_link_codes_user_id");
+
+                    b.ToTable("telegram_link_codes", (string)null);
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramPendingExpense", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_telegram_pending_expenses");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_telegram_pending_expenses_created_at");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_telegram_pending_expenses_user_id");
+
+                    b.ToTable("telegram_pending_expenses", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_telegram_pending_expenses_amount", "amount > 0");
+                        });
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1609,6 +1721,36 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("CreditCard");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramLink", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_telegram_links_users_user_id");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramLinkCode", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_telegram_link_codes_users_user_id");
+                });
+
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramPendingExpense", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_telegram_pending_expenses_users_user_id");
                 });
 
             modelBuilder.Entity("FinanceApp.Domain.Transactions.Transaction", b =>

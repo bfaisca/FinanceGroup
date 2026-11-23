@@ -6,6 +6,7 @@ using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Installments;
 using FinanceApp.Domain.Notifications;
 using FinanceApp.Domain.Recurrences;
+using FinanceApp.Domain.Telegram;
 using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,12 @@ public interface IAppDbContext
     DbSet<GroupTransactionSeries> GroupTransactionSeries { get; }
 
     DbSet<Notification> Notifications { get; }
+
+    DbSet<TelegramLink> TelegramLinks { get; }
+
+    DbSet<TelegramLinkCode> TelegramLinkCodes { get; }
+
+    DbSet<TelegramPendingExpense> TelegramPendingExpenses { get; }
 
     /// <summary>Rastreador de alterações (usado para descartar entidades pendentes após uma disputa de unicidade).</summary>
     ChangeTracker ChangeTracker { get; }

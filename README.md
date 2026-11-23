@@ -42,6 +42,20 @@ cd backend && dotnet test        # requer PostgreSQL acessível (TEST_DATABASE_C
 cd frontend && npm run test -- --run
 ```
 
+## Bot do Telegram (opcional)
+
+Permite lançar despesas pessoais enviando, por exemplo, `45,90 mercado` ao bot e escolhendo a categoria (D-053/D-054, contrato §18).
+
+1. No Telegram, converse com o **@BotFather**, use `/newbot` e guarde o **token** e o **nome de usuário** do bot.
+2. Defina as variáveis `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (16+ caracteres: letras, números, `_`, `-`) e `TELEGRAM_BOT_USERNAME` (sem `@`). No Render, são `Telegram__BotToken`, `Telegram__WebhookSecret` e `Telegram__BotUsername`.
+3. Registre o webhook (uma vez; a URL precisa ser HTTPS e pública):
+   ```bash
+   curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+     -d "url=https://<url-da-api>/api/v1/telegram/webhook" \
+     -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+   ```
+4. No site, abra **Configurações → Telegram**, gere o código e envie `/vincular CÓDIGO` ao bot.
+
 ## Documentação
 
 - [`CLAUDE.md`](CLAUDE.md) — regras arquiteturais e de negócio

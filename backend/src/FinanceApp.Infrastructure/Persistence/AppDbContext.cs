@@ -7,6 +7,7 @@ using FinanceApp.Domain.CreditCards;
 using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Installments;
 using FinanceApp.Domain.Notifications;
+using FinanceApp.Domain.Telegram;
 using FinanceApp.Domain.Recurrences;
 using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
@@ -50,6 +51,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GroupTransactionSeries> GroupTransactionSeries => Set<GroupTransactionSeries>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<TelegramLink> TelegramLinks => Set<TelegramLink>();
+
+    public DbSet<TelegramLinkCode> TelegramLinkCodes => Set<TelegramLinkCode>();
+
+    public DbSet<TelegramPendingExpense> TelegramPendingExpenses => Set<TelegramPendingExpense>();
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {

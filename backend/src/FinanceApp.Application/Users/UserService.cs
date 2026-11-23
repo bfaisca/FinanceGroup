@@ -2,6 +2,7 @@ using FinanceApp.Application.Auth;
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Application.Common.Validation;
+using FinanceApp.Application.Telegram;
 using FinanceApp.Domain.Auth;
 using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Users;
@@ -84,6 +85,7 @@ public sealed partial class UserService(
         await LeaveGroupsAsync(user.Id, now, cancellationToken).ConfigureAwait(false);
         await RemoveIndividualFinancialDataAsync(user.Id, cancellationToken).ConfigureAwait(false);
         await RemoveNotificationsAsync(user.Id, cancellationToken).ConfigureAwait(false);
+        await TelegramLinkService.RemoveAllForUserAsync(db, user.Id, cancellationToken).ConfigureAwait(false);
         user.Anonymize(now);
         await db.RevokeActiveRefreshTokensAsync(user.Id, now, RefreshTokenRevocationReason.AccountDeleted, cancellationToken).ConfigureAwait(false);
         var resetTokens = await db.PasswordResetTokens.Where(t => t.UserId == user.Id).ToListAsync(cancellationToken).ConfigureAwait(false);

@@ -37,6 +37,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public FakeEmailSender Emails { get; } = new();
 
+    public FakeTelegramClient Telegram { get; } = new();
+
+    public const string TelegramSecret = "telegram-test-secret-123456";
+
     /// <summary>Relógio de teste: tempo real por padrão; <see cref="TestClock.TodayOverride"/> fixa "hoje" (D-021).</summary>
     public TestClock Clock { get; } = new();
 
@@ -90,6 +94,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["RateLimiting:Enabled"] = "false",
                 ["Recurrence:BackgroundEnabled"] = "false",
                 ["Serilog:MinimumLevel:Default"] = "Warning",
+                ["Telegram:BotToken"] = "123456:test-token",
+                ["Telegram:WebhookSecret"] = TelegramSecret,
+                ["Telegram:BotUsername"] = "groupfinance_test_bot",
             };
             foreach (var (key, value) in ExtraSettings)
             {
@@ -102,6 +109,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(Emails);
+            services.RemoveAll<FinanceApp.Application.Telegram.ITelegramClient>();
+            services.AddSingleton<FinanceApp.Application.Telegram.ITelegramClient>(Telegram);
             services.RemoveAll<IDateTimeProvider>();
             services.AddSingleton<IDateTimeProvider>(Clock);
         });

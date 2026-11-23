@@ -57,6 +57,9 @@ services:
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__UseSsl: ${SMTP_USE_SSL:-false}
       Smtp__From: ${SMTP_FROM:-no-reply@groupfinance.local}
+      Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
+      Telegram__WebhookSecret: ${TELEGRAM_WEBHOOK_SECRET:-}
+      Telegram__BotUsername: ${TELEGRAM_BOT_USERNAME:-}
     ports:
       - "${API_PORT:-5000}:8080"
     healthcheck:

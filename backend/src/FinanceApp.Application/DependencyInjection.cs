@@ -9,6 +9,8 @@ using FinanceApp.Application.Installments;
 using FinanceApp.Application.Notifications;
 using FinanceApp.Application.Recurrences;
 using FinanceApp.Application.Reports;
+using FinanceApp.Application.Telegram;
+using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Application.Users;
 using FluentValidation;
@@ -42,6 +44,9 @@ public static class DependencyInjection
         services.AddScoped<GroupTransactionService>();
         services.AddScoped<GroupDashboardService>();
         services.AddScoped<NotificationService>();
+        services.AddScoped<CurrentUserOverride>();
+        services.AddScoped<TelegramLinkService>();
+        services.AddScoped<TelegramBotService>();
         return services;
     }
 }
