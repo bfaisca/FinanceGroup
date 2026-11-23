@@ -45,7 +45,13 @@ public static class DependencyInjection
         services.AddSingleton<Application.Common.Abstractions.IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ISecureTokenService, SecureTokenService>();
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
-        services.AddScoped<IEmailSender, SmtpEmailSender>();
+        // E-mail: API HTTPS da Brevo quando Brevo__ApiKey está definida (D-055); senão SMTP (Mailpit em desenvolvimento).
+        services.AddOptions<BrevoOptions>().BindConfiguration(BrevoOptions.SectionName);
+        services.AddScoped<SmtpEmailSender>();
+        services.AddHttpClient<BrevoEmailSender>(client => client.Timeout = TimeSpan.FromSeconds(15)).RemoveAllLoggers();
+        services.AddScoped<IEmailSender>(sp => sp.GetRequiredService<IOptions<BrevoOptions>>().Value.Enabled
+            ? sp.GetRequiredService<BrevoEmailSender>()
+            : sp.GetRequiredService<SmtpEmailSender>());
         services.AddHttpClient<ITelegramClient, FinanceApp.Infrastructure.Telegram.TelegramBotClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
             .RemoveAllLoggers();
 

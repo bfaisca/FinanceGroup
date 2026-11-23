@@ -57,6 +57,7 @@ services:
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__UseSsl: ${SMTP_USE_SSL:-false}
       Smtp__From: ${SMTP_FROM:-no-reply@groupfinance.local}
+      Brevo__ApiKey: ${BREVO_API_KEY:-}
       Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
       Telegram__WebhookSecret: ${TELEGRAM_WEBHOOK_SECRET:-}
       Telegram__BotUsername: ${TELEGRAM_BOT_USERNAME:-}

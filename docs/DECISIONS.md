@@ -296,3 +296,6 @@ Escolhas do usuário: **só despesas individuais**; entrada por **texto simples 
 - **Pendência:** `telegram_pending_expenses` (id numérico curto cabe no `callback_data`), validade de 15 minutos, restrita ao usuário do chat; limpeza oportunista das vencidas.
 - **Falhas:** o webhook sempre responde 200 após autenticado; erros são registrados sem conteúdo e o usuário vê mensagem curta.
 
+## D-055 — E-mail por API HTTPS (Brevo) quando o SMTP é bloqueado — Aceita
+O Render gratuito bloqueia as portas SMTP 25, 465 e 587 (desde setembro/2025), então convites e redefinição de senha não saem por SMTP ali. Com `Brevo__ApiKey` definida, `IEmailSender` usa a API transacional da Brevo (HTTPS, plano gratuito de 300 e-mails/dia); sem ela, continua o SMTP (Mailpit em desenvolvimento). Remetente = `Smtp__From`/`Smtp__FromName`, que precisa estar validado na Brevo. A chave não é registrada em log, e o erro de envio não inclui o corpo da resposta. Sem biblioteca nova; sem mudança de contrato.
+
