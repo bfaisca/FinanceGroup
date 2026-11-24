@@ -95,7 +95,8 @@ onBeforeUnmount(() => {
     <h2 id="telegram-title" class="settings-section__title">Telegram</h2>
     <p class="settings-section__description">
       Lance despesas pessoais pelo Telegram: envie o valor e a descrição (por exemplo, “45,90 mercado”) e escolha a
-      categoria. A despesa entra na data de hoje, como pendente e sem conta vinculada.
+      categoria. A despesa entra na data de hoje, como pendente e sem conta vinculada. Para lançar em um grupo, envie
+      primeiro “grupo” e escolha o grupo.
     </p>
 
     <p v-if="loading" class="settings-section__description" role="status">Carregando…</p>

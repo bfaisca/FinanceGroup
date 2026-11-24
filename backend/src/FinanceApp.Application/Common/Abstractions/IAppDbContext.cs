@@ -60,6 +60,8 @@ public interface IAppDbContext
 
     DbSet<TelegramPendingExpense> TelegramPendingExpenses { get; }
 
+    DbSet<TelegramGroupSelection> TelegramGroupSelections { get; }
+
     /// <summary>Rastreador de alterações (usado para descartar entidades pendentes após uma disputa de unicidade).</summary>
     ChangeTracker ChangeTracker { get; }
 

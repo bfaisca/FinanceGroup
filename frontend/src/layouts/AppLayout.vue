@@ -125,8 +125,21 @@ watch(isTabletUp, (tabletUp) => {
   border-bottom: 1px solid var(--gf-border);
 }
 
+.app-topbar > :not(.app-topbar__spacer) {
+  /* Nenhum botão (menu, notificações, tema, usuário) pode ser espremido em telas estreitas. */
+  flex-shrink: 0;
+}
+
 .app-topbar__brand {
+  min-width: 0;
   text-decoration: none;
+}
+
+/* Telas muito estreitas (ex.: 360 px): só o ícone da marca, para o menu e as ações caberem. */
+@media (max-width: 479px) {
+  .app-topbar__brand :deep(.brand__name) {
+    display: none;
+  }
 }
 
 .app-topbar__spacer {

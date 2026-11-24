@@ -299,3 +299,10 @@ Escolhas do usuário: **só despesas individuais**; entrada por **texto simples 
 ## D-055 — E-mail por API HTTPS (Brevo) quando o SMTP é bloqueado — Aceita
 O Render gratuito bloqueia as portas SMTP 25, 465 e 587 (desde setembro/2025), então convites e redefinição de senha não saem por SMTP ali. Com `Brevo__ApiKey` definida, `IEmailSender` usa a API transacional da Brevo (HTTPS, plano gratuito de 300 e-mails/dia); sem ela, continua o SMTP (Mailpit em desenvolvimento). Remetente = `Smtp__From`/`Smtp__FromName`, que precisa estar validado na Brevo. A chave não é registrada em log, e o erro de envio não inclui o corpo da resposta. Sem biblioteca nova; sem mudança de contrato.
 
+## D-056 — Bot do Telegram: despesas de grupo — Aceita (fluxo pedido pelo usuário) / Proposta (detalhes)
+Fluxo pedido: enviar `grupo` → escolher o grupo em botões → enviar valor e descrição → escolher a categoria em botões, igual ao fluxo individual.
+- **Seleção de uso único:** `telegram_group_selections` (uma por usuário, 15 minutos). Vale só para a próxima despesa; depois o bot volta ao lançamento individual, para ninguém publicar no grupo sem querer. Escolha expirada ou grupo indisponível → o bot avisa e não lança nada (nunca recai silenciosamente em despesa individual).
+- **Quem aparece:** só grupos ativos (não arquivados) em que o usuário é membro ativo; nada de grupos alheios. A permissão é revalidada na escolha e de novo na confirmação (quem saiu do grupo no meio do caminho não lança).
+- **Criação:** `GroupTransactionService.CreateAsync` com a identidade do vínculo (mesmo mecanismo de D-053): mesmas regras de D-046/D-047 (somente despesa; `Pending`; data de hoje; sem conta/pagamento/recorrência). As notificações do grupo (D-041) são geradas normalmente. `telegram_pending_expenses.group_id` (nulo = individual).
+- Fora do escopo: marcar como paga, recorrência e vencimento pelo bot (o usuário completa no site).
+

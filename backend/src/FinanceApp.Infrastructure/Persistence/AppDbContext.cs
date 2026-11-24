@@ -58,6 +58,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<TelegramPendingExpense> TelegramPendingExpenses => Set<TelegramPendingExpense>();
 
+    public DbSet<TelegramGroupSelection> TelegramGroupSelections => Set<TelegramGroupSelection>();
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         try

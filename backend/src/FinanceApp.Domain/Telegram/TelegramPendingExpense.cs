@@ -20,9 +20,12 @@ public sealed class TelegramPendingExpense
 
     public decimal Amount { get; private set; }
 
+    /// <summary>Preenchido quando a despesa vai para um grupo (D-056); nulo = despesa individual.</summary>
+    public Guid? GroupId { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static TelegramPendingExpense Create(Guid userId, string description, decimal amount, DateTimeOffset now)
+    public static TelegramPendingExpense Create(Guid userId, string description, decimal amount, DateTimeOffset now, Guid? groupId = null)
     {
         if (amount <= 0)
         {
@@ -40,6 +43,7 @@ public sealed class TelegramPendingExpense
             UserId = Guard.NotEmpty(userId, "O usuário é obrigatório."),
             Description = text,
             Amount = decimal.Round(amount, 2, MidpointRounding.AwayFromZero),
+            GroupId = groupId,
             CreatedAt = Guard.Utc(now),
         };
     }

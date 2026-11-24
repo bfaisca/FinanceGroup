@@ -2,8 +2,10 @@ using System.Globalization;
 using FinanceApp.Application.Common.Abstractions;
 using FinanceApp.Application.Common.Exceptions;
 using FinanceApp.Application.Common.Options;
+using FinanceApp.Application.Groups;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Telegram;
 using FinanceApp.Domain.Transactions;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +21,7 @@ namespace FinanceApp.Application.Telegram;
 public sealed partial class TelegramBotService(
     IAppDbContext db,
     TransactionService transactions,
+    GroupTransactionService groupTransactions,
     CurrentUserOverride userOverride,
     ITelegramClient client,
     IDateTimeProvider clock,
@@ -32,6 +35,8 @@ public sealed partial class TelegramBotService(
     private const int CategoriesPerRow = 2;
     private const string CreatePrefix = "c:";
     private const string CancelPrefix = "x:";
+    private const string GroupPrefix = "g:";
+    private const string CancelGroup = "xg";
 
     private const string HelpText =
         "Eu lanço despesas no GroupFinance.\n\n" +
@@ -40,7 +45,8 @@ public sealed partial class TelegramBotService(
         "• mercado 45,90\n" +
         "• /despesa 1.234,56 aluguel\n\n" +
         "Depois escolha a categoria nos botões. A despesa é lançada na data de hoje, como pendente e sem conta vinculada.\n\n" +
-        "Comandos: /ajuda, /vincular CÓDIGO, /desvincular.";
+        "Para lançar em um grupo, envie primeiro: grupo. Escolha o grupo nos botões e depois envie a despesa normalmente (vale só para a próxima).\n\n" +
+        "Comandos: /ajuda, /grupo, /vincular CÓDIGO, /desvincular.";
 
     public async Task HandleAsync(TelegramUpdate update, CancellationToken cancellationToken)
     {
@@ -112,6 +118,12 @@ public sealed partial class TelegramBotService(
             return;
         }
 
+        if (value.Equals("grupo", StringComparison.OrdinalIgnoreCase) || command is "/grupo")
+        {
+            await ListGroupsAsync(chatId, link.UserId, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         var parsed = TelegramExpenseParser.Parse(value);
         if (parsed is null)
         {
@@ -120,10 +132,26 @@ public sealed partial class TelegramBotService(
         }
 
         var now = clock.UtcNow;
+        var selection = await db.TelegramGroupSelections.AsTracking().FirstOrDefaultAsync(x => x.UserId == link.UserId, cancellationToken).ConfigureAwait(false);
+        string? groupName = null;
+        if (selection is not null)
+        {
+            var expired = now - selection.CreatedAt > PendingLifetime;
+            groupName = expired ? null : await ActiveGroupNameAsync(selection.GroupId, link.UserId, cancellationToken).ConfigureAwait(false);
+            if (groupName is null)
+            {
+                // Nunca cair no lançamento individual sem aviso quando o usuário tinha escolhido um grupo.
+                db.TelegramGroupSelections.Remove(selection);
+                await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                await client.SendMessageAsync(chatId, "A escolha do grupo expirou ou o grupo não está mais disponível. Envie \"grupo\" para escolher de novo, ou envie a despesa de novo para lançá-la como individual.", null, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+        }
+
         TelegramPendingExpense pending;
         try
         {
-            pending = TelegramPendingExpense.Create(link.UserId, parsed.Description, parsed.Amount, now);
+            pending = TelegramPendingExpense.Create(link.UserId, parsed.Description, parsed.Amount, now, selection?.GroupId);
         }
         catch (Domain.Common.DomainException ex)
         {
@@ -142,6 +170,11 @@ public sealed partial class TelegramBotService(
         var cutoff = now - PendingLifetime;
         db.TelegramPendingExpenses.RemoveRange(await db.TelegramPendingExpenses.Where(p => p.CreatedAt < cutoff).ToListAsync(cancellationToken).ConfigureAwait(false));
         db.TelegramPendingExpenses.Add(pending);
+        if (selection is not null)
+        {
+            db.TelegramGroupSelections.Remove(selection);
+        }
+
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         var buttons = categories
@@ -153,7 +186,7 @@ public sealed partial class TelegramBotService(
 
         await client.SendMessageAsync(
             chatId,
-            $"Despesa de {Money(pending.Amount)}: {pending.Description}\nEscolha a categoria:",
+            $"Despesa{(groupName is null ? string.Empty : $" no grupo «{groupName}»")} de {Money(pending.Amount)}: {pending.Description}\nEscolha a categoria:",
             buttons,
             cancellationToken).ConfigureAwait(false);
     }
@@ -173,6 +206,20 @@ public sealed partial class TelegramBotService(
         if (link is null)
         {
             await client.EditMessageAsync(chatId.Value, messageId.Value, "Este chat não está vinculado.", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (data == CancelGroup)
+        {
+            db.TelegramGroupSelections.RemoveRange(await db.TelegramGroupSelections.Where(x => x.UserId == link.UserId).ToListAsync(cancellationToken).ConfigureAwait(false));
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await client.EditMessageAsync(chatId.Value, messageId.Value, "Seleção de grupo cancelada. A próxima despesa será individual.", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (data.StartsWith(GroupPrefix, StringComparison.Ordinal) && Guid.TryParseExact(data[GroupPrefix.Length..], "N", out var chosenGroupId))
+        {
+            await SelectGroupAsync(chatId.Value, messageId.Value, link.UserId, chosenGroupId, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -209,19 +256,47 @@ public sealed partial class TelegramBotService(
         }
 
         // O único ponto em que a identidade do escopo é definida pelo servidor, a partir do vínculo verificado.
+        string? targetGroupName = null;
+        if (pending.GroupId is { } pendingGroupId)
+        {
+            targetGroupName = await ActiveGroupNameAsync(pendingGroupId, link.UserId, cancellationToken).ConfigureAwait(false);
+            if (targetGroupName is null)
+            {
+                await client.EditMessageAsync(chatId.Value, messageId.Value, "O grupo não está mais disponível para você. Despesa não lançada.", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+        }
+
         userOverride.UserId = link.UserId;
         try
         {
-            await transactions.CreateAsync(
-                new CreateTransactionRequest
-                {
-                    Description = pending.Description,
-                    Type = TransactionType.Expense,
-                    Amount = pending.Amount,
-                    CategoryId = categoryId,
-                    TransactionDate = clock.Today,
-                },
-                cancellationToken).ConfigureAwait(false);
+            if (pending.GroupId is { } groupId)
+            {
+                // Mesmas regras e permissões de POST /groups/{id}/transactions (membro ativo, grupo ativo, categoria do próprio usuário).
+                await groupTransactions.CreateAsync(
+                    groupId,
+                    new CreateGroupTransactionRequest
+                    {
+                        Description = pending.Description,
+                        Amount = pending.Amount,
+                        CategoryId = categoryId,
+                        TransactionDate = clock.Today,
+                    },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await transactions.CreateAsync(
+                    new CreateTransactionRequest
+                    {
+                        Description = pending.Description,
+                        Type = TransactionType.Expense,
+                        Amount = pending.Amount,
+                        CategoryId = categoryId,
+                        TransactionDate = clock.Today,
+                    },
+                    cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (AppException ex)
         {
@@ -238,9 +313,60 @@ public sealed partial class TelegramBotService(
         await client.EditMessageAsync(
             chatId.Value,
             messageId.Value,
-            $"✅ Despesa lançada: {pending.Description} — {Money(pending.Amount)} ({category}), hoje, pendente.",
+            targetGroupName is null
+                ? $"✅ Despesa lançada: {pending.Description} — {Money(pending.Amount)} ({category}), hoje, pendente."
+                : $"✅ Despesa lançada no grupo «{targetGroupName}»: {pending.Description} — {Money(pending.Amount)} ({category}), hoje, pendente.",
             cancellationToken).ConfigureAwait(false);
     }
+
+    private async Task ListGroupsAsync(long chatId, Guid userId, CancellationToken cancellationToken)
+    {
+        var groups = await db.Groups
+            .Where(g => g.IsActive && g.Members.Any(m => m.UserId == userId && m.Status == GroupMemberStatus.Active))
+            .OrderBy(g => g.Name)
+            .Select(g => new { g.Id, g.Name })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (groups.Count == 0)
+        {
+            await client.SendMessageAsync(chatId, "Você não participa de nenhum grupo ativo.", null, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var buttons = groups
+            .Select(g => new TelegramButton(g.Name, $"{GroupPrefix}{g.Id:N}"))
+            .Chunk(CategoriesPerRow)
+            .Select(row => (IReadOnlyList<TelegramButton>)row)
+            .ToList();
+        buttons.Add([new TelegramButton("Cancelar", CancelGroup)]);
+        await client.SendMessageAsync(chatId, "Em qual grupo você quer lançar a despesa?", buttons, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SelectGroupAsync(long chatId, long messageId, Guid userId, Guid groupId, CancellationToken cancellationToken)
+    {
+        var name = await ActiveGroupNameAsync(groupId, userId, cancellationToken).ConfigureAwait(false);
+        if (name is null)
+        {
+            await client.EditMessageAsync(chatId, messageId, "Grupo indisponível. Envie \"grupo\" para escolher de novo.", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        db.TelegramGroupSelections.RemoveRange(await db.TelegramGroupSelections.Where(x => x.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false));
+        db.TelegramGroupSelections.Add(TelegramGroupSelection.Create(userId, groupId, clock.UtcNow));
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await client.EditMessageAsync(
+            chatId,
+            messageId,
+            $"Grupo «{name}» selecionado. Envie agora o valor e a descrição (ex.: 45,90 iptu). Vale só para a próxima despesa; depois, volta ao lançamento individual.",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Nome do grupo se estiver ativo (não arquivado) e o usuário for membro ativo; senão nulo (não vaza a existência de grupos alheios).</summary>
+    private Task<string?> ActiveGroupNameAsync(Guid groupId, Guid userId, CancellationToken cancellationToken) =>
+        db.Groups
+            .Where(g => g.Id == groupId && g.IsActive && g.Members.Any(m => m.UserId == userId && m.Status == GroupMemberStatus.Active))
+            .Select(g => (string?)g.Name)
+            .FirstOrDefaultAsync(cancellationToken);
 
     private async Task LinkAsync(long chatId, string rawCode, CancellationToken cancellationToken)
     {

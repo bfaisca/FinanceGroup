@@ -1009,6 +1009,37 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramGroupSelection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_telegram_group_selections");
+
+                    b.HasIndex("GroupId")
+                        .HasDatabaseName("ix_telegram_group_selections_group_id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_telegram_group_selections_user_id");
+
+                    b.ToTable("telegram_group_selections", (string)null);
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramLink", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1102,6 +1133,10 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("description");
 
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
@@ -1111,6 +1146,9 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_telegram_pending_expenses_created_at");
+
+                    b.HasIndex("GroupId")
+                        .HasDatabaseName("ix_telegram_pending_expenses_group_id");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_telegram_pending_expenses_user_id");
@@ -1723,6 +1761,23 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
                     b.Navigation("CreditCard");
                 });
 
+            modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramGroupSelection", b =>
+                {
+                    b.HasOne("FinanceApp.Domain.Groups.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_telegram_group_selections_groups_group_id");
+
+                    b.HasOne("FinanceApp.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_telegram_group_selections_users_user_id");
+                });
+
             modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramLink", b =>
                 {
                     b.HasOne("FinanceApp.Domain.Users.User", null)
@@ -1745,6 +1800,12 @@ namespace FinanceApp.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("FinanceApp.Domain.Telegram.TelegramPendingExpense", b =>
                 {
+                    b.HasOne("FinanceApp.Domain.Groups.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_telegram_pending_expenses_groups_group_id");
+
                     b.HasOne("FinanceApp.Domain.Users.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")

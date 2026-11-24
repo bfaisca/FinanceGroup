@@ -66,6 +66,7 @@ public sealed class TelegramLinkService(
     {
         db.TelegramLinks.RemoveRange(await db.TelegramLinks.Where(l => l.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false));
         db.TelegramLinkCodes.RemoveRange(await db.TelegramLinkCodes.Where(c => c.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false));
+        db.TelegramGroupSelections.RemoveRange(await db.TelegramGroupSelections.Where(s => s.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false));
         db.TelegramPendingExpenses.RemoveRange(await db.TelegramPendingExpenses.Where(p => p.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false));
     }
 }

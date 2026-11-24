@@ -55,6 +55,7 @@ Permite lançar despesas pessoais enviando, por exemplo, `45,90 mercado` ao bot 
      -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
    ```
 4. No site, abra **Configurações → Telegram**, gere o código e envie `/vincular CÓDIGO` ao bot.
+5. Para lançar em um grupo, envie `grupo`, escolha o grupo nos botões e depois envie a despesa (ex.: `500 iptu`) e a categoria. A escolha vale só para a próxima despesa.
 
 ## Documentação
 

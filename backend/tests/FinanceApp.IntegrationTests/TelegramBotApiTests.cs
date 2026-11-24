@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using FinanceApp.Application.Common;
+using FinanceApp.Application.Groups;
 using FinanceApp.Application.Telegram;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Domain.Categories;
@@ -271,19 +273,155 @@ public class TelegramBotApiTests(ApiFactory factory)
     {
         var user = await h.NewUserAsync("Exclui Bot");
         var chat = await LinkedChatAsync(user);
-        await SayAsync(chat, "15 lanche");
+        await SayAsync(chat, "15 pastel-exclusao");
         await user.Post("/api/v1/telegram/link-code");
 
         Assert.Equal(HttpStatusCode.NoContent, (await user.SendAsync(HttpMethod.Delete, "/api/v1/users/me", new { password = DefaultPassword })).StatusCode);
 
         var counts = await h.WithDbAsync(async db => (
             await db.TelegramLinks.CountAsync(l => l.ChatId == chat),
-            await db.TelegramPendingExpenses.CountAsync(p => p.Description == "lanche"),
+            await db.TelegramPendingExpenses.CountAsync(p => p.Description == "pastel-exclusao"),
             await db.TelegramLinkCodes.CountAsync()));
         Assert.Equal(0, counts.Item1);
         Assert.Equal(0, counts.Item2);
-        await SayAsync(chat, "15 lanche");
+        await SayAsync(chat, "15 pastel-exclusao");
         Assert.Contains("não está vinculado", factory.Telegram.Last.Text);
+    }
+
+    private static string GroupCallback(SentTelegramMessage prompt, string groupName) =>
+        prompt.Keyboard!.SelectMany(r => r).Single(b => b.Text == groupName).CallbackData;
+
+    [Fact]
+    public async Task GroupFlow_Group_ThenExpense_ThenCategory_CreatesGroupTransaction_VisibleToMembers()
+    {
+        var ana = await h.NewUserAsync("Ana Grupo");
+        var bia = await h.NewUserAsync("Bia Grupo");
+        var group = await h.CreateGroupAsync(ana, "Casa Bot");
+        await h.JoinAsync(ana, group.Id, bia);
+        var chat = await LinkedChatAsync(bia);
+
+        await SayAsync(chat, "grupo");
+        var list = factory.Telegram.Last;
+        Assert.Contains("Em qual grupo", list.Text);
+        await PressAsync(chat, GroupCallback(list, "Casa Bot"));
+        Assert.Contains("«Casa Bot» selecionado", factory.Telegram.Last.Text);
+
+        await SayAsync(chat, "500 iptu");
+        var prompt = factory.Telegram.Last;
+        Assert.Contains("no grupo «Casa Bot»", prompt.Text);
+        await PressAsync(chat, CallbackFor(prompt, "Moradia"));
+        Assert.Contains("lançada no grupo «Casa Bot»", factory.Telegram.Last.Text);
+
+        var page = await ana.GetOk<PagedResult<GroupTransactionDto>>($"/api/v1/groups/{group.Id}/transactions");
+        var tx = Assert.Single(page.Items);
+        Assert.Equal("iptu", tx.Description);
+        Assert.Equal(500m, tx.Amount);
+        Assert.Equal("Bia Grupo", tx.CreatedBy.Name);
+        Assert.Empty((await h.ListAsync(bia)).Items);
+
+        // A seleção vale uma vez só: a próxima despesa volta a ser individual.
+        await SayAsync(chat, "10 café");
+        Assert.DoesNotContain("grupo", factory.Telegram.Last.Text);
+        Assert.Contains("Escolha a categoria", factory.Telegram.Last.Text);
+    }
+
+    [Fact]
+    public async Task GroupList_OnlyShowsActiveGroupsWhereTheUserIsMember()
+    {
+        var ana = await h.NewUserAsync("Ana Lista");
+        var bia = await h.NewUserAsync("Bia Lista");
+        await h.CreateGroupAsync(ana, "Só da Ana");
+        var mine = await h.CreateGroupAsync(bia, "Da Bia");
+        var archived = await h.CreateGroupAsync(bia, "Arquivado");
+        await bia.Post($"/api/v1/groups/{archived.Id}/archive");
+        var chat = await LinkedChatAsync(bia);
+
+        await SayAsync(chat, "/grupo");
+        var names = factory.Telegram.Last.Keyboard!.SelectMany(r => r).Select(b => b.Text).ToList();
+        Assert.Contains("Da Bia", names);
+        Assert.DoesNotContain("Só da Ana", names);
+        Assert.DoesNotContain("Arquivado", names);
+        Assert.NotNull(mine);
+    }
+
+    [Fact]
+    public async Task GroupList_WithoutGroups_SaysSo()
+    {
+        var user = await h.NewUserAsync("Sem Grupo");
+        var chat = await LinkedChatAsync(user);
+        await SayAsync(chat, "grupo");
+        Assert.Contains("nenhum grupo", factory.Telegram.Last.Text);
+    }
+
+    [Fact]
+    public async Task ChoosingAGroupTheUserDoesNotBelongTo_IsRefused_AndNothingIsPosted()
+    {
+        var ana = await h.NewUserAsync("Ana Dona G");
+        var bia = await h.NewUserAsync("Bia Intrusa G");
+        var group = await h.CreateGroupAsync(ana, "Privado");
+        var chat = await LinkedChatAsync(bia);
+
+        await PressAsync(chat, $"g:{group.Id:N}");
+        Assert.Contains("indisponível", factory.Telegram.Last.Text);
+        await SayAsync(chat, "99 teste");
+        Assert.Contains("Escolha a categoria", factory.Telegram.Last.Text);
+        Assert.DoesNotContain("grupo", factory.Telegram.Last.Text);
+        var page = await ana.GetOk<PagedResult<GroupTransactionDto>>($"/api/v1/groups/{group.Id}/transactions");
+        Assert.Empty(page.Items);
+    }
+
+    [Fact]
+    public async Task ExpiredGroupSelection_NeverFallsBackToIndividual()
+    {
+        var user = await h.NewUserAsync("Expira G");
+        var group = await h.CreateGroupAsync(user, "Casa Exp");
+        var chat = await LinkedChatAsync(user);
+        await PressAsync(chat, $"g:{group.Id:N}");
+        await h.WithDbAsync(async db =>
+        {
+            await db.Database.ExecuteSqlRawAsync("UPDATE telegram_group_selections SET created_at = created_at - interval '1 hour'");
+            return 0;
+        });
+
+        await SayAsync(chat, "20 lanche");
+        Assert.Contains("expirou", factory.Telegram.Last.Text);
+        Assert.Empty((await h.ListAsync(user)).Items);
+        var page = await user.GetOk<PagedResult<GroupTransactionDto>>($"/api/v1/groups/{group.Id}/transactions");
+        Assert.Empty(page.Items);
+    }
+
+    [Fact]
+    public async Task CancelGroupSelection_ReturnsToIndividual()
+    {
+        var user = await h.NewUserAsync("Cancela G");
+        var group = await h.CreateGroupAsync(user, "Casa Canc");
+        var chat = await LinkedChatAsync(user);
+        await SayAsync(chat, "grupo");
+        await PressAsync(chat, "xg");
+        Assert.Contains("cancelada", factory.Telegram.Last.Text);
+        await SayAsync(chat, "20 lanche");
+        Assert.DoesNotContain("no grupo", factory.Telegram.Last.Text);
+        Assert.NotNull(group);
+    }
+
+    [Fact]
+    public async Task LeavingTheGroupBeforeConfirming_BlocksThePostedExpense()
+    {
+        var ana = await h.NewUserAsync("Ana Sai");
+        var bia = await h.NewUserAsync("Bia Sai");
+        var group = await h.CreateGroupAsync(ana, "Casa Sai");
+        await h.JoinAsync(ana, group.Id, bia);
+        var chat = await LinkedChatAsync(bia);
+        await PressAsync(chat, $"g:{group.Id:N}");
+        await SayAsync(chat, "70 conta");
+        var prompt = factory.Telegram.Last;
+
+        Assert.Equal(HttpStatusCode.NoContent, (await bia.Post($"/api/v1/groups/{group.Id}/leave")).StatusCode);
+        await PressAsync(chat, CallbackFor(prompt, "Moradia"));
+
+        Assert.Contains("não está mais disponível", factory.Telegram.Last.Text);
+        var page = await ana.GetOk<PagedResult<GroupTransactionDto>>($"/api/v1/groups/{group.Id}/transactions");
+        Assert.Empty(page.Items);
     }
 
     [Fact]

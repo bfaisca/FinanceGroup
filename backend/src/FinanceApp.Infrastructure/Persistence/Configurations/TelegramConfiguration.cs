@@ -1,3 +1,4 @@
+using FinanceApp.Domain.Groups;
 using FinanceApp.Domain.Telegram;
 using FinanceApp.Domain.Transactions;
 using FinanceApp.Domain.Users;
@@ -43,7 +44,21 @@ internal sealed class TelegramPendingExpenseConfiguration : IEntityTypeConfigura
         builder.Property(p => p.Description).HasMaxLength(Transaction.DescriptionMaxLength).IsRequired();
         builder.Property(p => p.Amount).HasPrecision(18, 2);
         builder.HasOne<User>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Group>().WithMany().HasForeignKey(p => p.GroupId).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(p => p.UserId);
         builder.HasIndex(p => p.CreatedAt);
+    }
+}
+
+internal sealed class TelegramGroupSelectionConfiguration : IEntityTypeConfiguration<TelegramGroupSelection>
+{
+    public void Configure(EntityTypeBuilder<TelegramGroupSelection> builder)
+    {
+        builder.ToTable("telegram_group_selections");
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.HasOne<User>().WithMany().HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Group>().WithMany().HasForeignKey(s => s.GroupId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(s => s.UserId).IsUnique();
     }
 }
