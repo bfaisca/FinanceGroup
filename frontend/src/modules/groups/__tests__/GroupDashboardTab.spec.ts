@@ -3,7 +3,6 @@ import MockAdapter from 'axios-mock-adapter'
 import { flushPromises } from '@vue/test-utils'
 import { http } from '@/services/http'
 import GroupDashboardTab from '../components/GroupDashboardTab.vue'
-import { NOT_DEBT_NOTICE } from '../dashboard'
 import { makeGroupDashboard, makeGroupDetail, makePaidBy } from './fixtures'
 import { button, mountAt } from './helpers'
 
@@ -111,20 +110,14 @@ describe('GroupDashboardTab', () => {
     wrapper.unmount()
   })
 
-  it('mostra o aviso curto de que percentuais não são dívida', async () => {
+  it('não mostra aviso fixo de não-dívida (removido a pedido do usuário)', async () => {
     mock.onGet('/groups/g1/dashboard').reply(200, makeGroupDashboard())
     const { wrapper } = await mountTab()
-
-    const notice = wrapper.find('[data-testid="not-debt-notice"]')
-    // Aviso estático: não é anunciado como alerta assertivo.
-    expect(notice.find('.p-message').attributes('role')).toBe('note')
-    expect(notice.text()).toContain('indicadores')
-    expect(notice.text()).toContain('não representam dívida')
-    expect(notice.text()).toContain(NOT_DEBT_NOTICE)
+    expect(wrapper.find('[data-testid="not-debt-notice"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('o aviso fixo aparece mesmo com o período vazio', async () => {
+  it('período vazio mostra o estado vazio, sem aviso fixo', async () => {
     mock.onGet('/groups/g1/dashboard').reply(
       200,
       makeGroupDashboard({
@@ -135,7 +128,7 @@ describe('GroupDashboardTab', () => {
     )
     const { wrapper } = await mountTab()
     expect(wrapper.text()).toContain('Sem movimentações neste período')
-    expect(wrapper.find('[data-testid="not-debt-notice"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="not-debt-notice"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

@@ -3,10 +3,6 @@ import { compactMoney, EXPENSE_COLOR, INCOME_COLOR } from '@/modules/reports/cha
 import { formatCurrency, formatPercent } from '@/utils/format'
 import type { GroupDashboardDto, GroupPaidByItemDto } from './types'
 
-/** Aviso fixo do dashboard (D-034 / CLAUDE.md §6): percentuais são indicadores, não dívida. */
-export const NOT_DEBT_NOTICE =
-  'Os percentuais são só indicadores: não representam dívida nem valor a acertar entre os participantes.'
-
 /** Textos do quadro "Contas Pagas" (D-034 emendada): somente o título. */
 export const PAID_BY_COPY = {
   title: 'Contas Pagas',

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { NOTE_PT } from '../notice'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
@@ -12,7 +11,7 @@ import PeriodSelector from '@/modules/dashboard/components/PeriodSelector.vue'
 import { useClockStore } from '@/stores/clock'
 import { monthPeriod, validatePeriod, type Period } from '@/utils/period'
 import { useResource } from '../composables'
-import { isGroupDashboardEmpty, NOT_DEBT_NOTICE } from '../dashboard'
+import { isGroupDashboardEmpty } from '../dashboard'
 import { useGroupRefreshHandler } from '../refresh'
 import { groupDashboardService } from '../services/groupDashboardService'
 import type { GroupDetailDto } from '../types'
@@ -93,10 +92,6 @@ const empty = computed(() => (data.value ? isGroupDashboardEmpty(data.value) : f
         @update:model-value="patchQuery({ months: $event === DEFAULT_MONTHS ? undefined : String($event) })"
       />
     </div>
-
-    <Message :pt="NOTE_PT" severity="info" :closable="false" class="gdash__notice" data-testid="not-debt-notice">
-      <i class="pi pi-info-circle" aria-hidden="true" /> {{ NOT_DEBT_NOTICE }}
-    </Message>
 
     <LoadingState v-if="dashboard.loading.value && !data" label="Carregando resumo do grupo…" />
 
@@ -184,10 +179,6 @@ const empty = computed(() => (data.value ? isGroupDashboardEmpty(data.value) : f
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
-}
-
-.gdash__notice {
-  margin-bottom: 1.5rem;
 }
 
 .gdash__block {

@@ -5,7 +5,6 @@ import {
   formatChange,
   isGroupDashboardEmpty,
   monthlyOption,
-  NOT_DEBT_NOTICE,
   PAID_BY_COPY,
   paidByRows,
   paidPendingSlices,
@@ -457,9 +456,8 @@ describe('dashboard helpers', () => {
     expect(isGroupDashboardEmpty(makeGroupDashboard())).toBe(false)
   })
 
-  it('textos: "Contas Pagas" curto e aviso de não-dívida', () => {
+  it('texto: "Contas Pagas" curto', () => {
     expect(PAID_BY_COPY.title).toBe('Contas Pagas')
     expect(PAID_BY_COPY).toEqual({ title: 'Contas Pagas' })
-    expect(NOT_DEBT_NOTICE).toContain('não representam dívida')
   })
 })
