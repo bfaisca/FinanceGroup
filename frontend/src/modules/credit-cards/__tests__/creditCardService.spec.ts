@@ -34,4 +34,16 @@ describe('creditCardService', () => {
     expect(JSON.parse(mock.history.post[0]?.data as string)).toEqual(body)
     expect(JSON.parse(mock.history.put[0]?.data as string)).toEqual(body)
   })
+
+  it('lista faturas em aberto e paga uma fatura (D-057)', async () => {
+    mock.onGet('/credit-cards/c1/invoices').reply(200, [{ dueDate: '2026-12-12', remainingAmount: 10 }])
+    mock.onPost('/credit-cards/c1/invoices/pay').reply(200, { paidAmount: 10, purchasesPaid: 1 })
+
+    expect(await creditCardService.listInvoices('c1')).toHaveLength(1)
+    await creditCardService.payInvoice('c1', '2026-12-12', '2026-11-27')
+    expect(JSON.parse(mock.history.post[0]?.data as string)).toEqual({
+      dueDate: '2026-12-12',
+      paymentDate: '2026-11-27',
+    })
+  })
 })

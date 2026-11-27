@@ -10,6 +10,7 @@ const emit = defineEmits<{
   edit: [card: CreditCardDto]
   toggle: [card: CreditCardDto]
   purchases: [card: CreditCardDto]
+  'pay-invoice': [card: CreditCardDto]
 }>()
 </script>
 
@@ -62,6 +63,15 @@ const emit = defineEmits<{
         size="small"
         :aria-label="`Ver compras do cartão ${card.name}`"
         @click="emit('purchases', card)"
+      />
+      <Button
+        type="button"
+        label="Pagar fatura"
+        icon="pi pi-check-circle"
+        size="small"
+        :aria-label="`Pagar fatura do cartão ${card.name}`"
+        :disabled="busy"
+        @click="emit('pay-invoice', card)"
       />
       <Button
         type="button"

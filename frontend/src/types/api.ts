@@ -410,6 +410,23 @@ export interface CreditCardDto {
   updatedAt: IsoDateTimeString
 }
 
+/** Fatura com valor em aberto (`GET /credit-cards/{id}/invoices`, D-057). */
+export interface CardInvoiceDto {
+  dueDate: DateOnlyString
+  totalAmount: number
+  paidAmount: number
+  remainingAmount: number
+  purchaseCount: number
+  isOverdue: boolean
+}
+
+export interface PayInvoiceResult {
+  dueDate: DateOnlyString
+  paymentDate: DateOnlyString
+  paidAmount: number
+  purchasesPaid: number
+}
+
 /** POST e PUT têm o mesmo corpo. */
 export interface CreditCardRequest {
   name: string

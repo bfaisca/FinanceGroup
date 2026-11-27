@@ -5,6 +5,8 @@ import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { useCategoriesStore } from '@/stores/categories'
+import { useClockStore } from '@/stores/clock'
+import { hasNoFilters, monthPeriod } from '@/utils/period'
 import { useResource } from '../composables'
 import {
   countActiveGroupFilters,
@@ -29,7 +31,14 @@ const router = useRouter()
 const categories = useCategoriesStore()
 
 // A URL é a fonte dos filtros: links compartilháveis e recarregar a página preservam a visão.
-const filters = computed(() => parseGroupTransactionFilters(route.query))
+// Sem nenhum filtro na URL, a aba abre no mês atual (a URL passa a refletir o período). Limpar as datas depois respeita a escolha.
+const clock = useClockStore()
+const defaultPeriod = computed(() => monthPeriod(clock.today))
+const seedPeriod = ref(hasNoFilters(route.query, ['tab', 'page', 'pageSize', 'sort', 'open', 'new']))
+const filters = computed(() => {
+  const parsed = parseGroupTransactionFilters(route.query)
+  return seedPeriod.value ? { ...parsed, ...defaultPeriod.value } : parsed
+})
 const list = useResource(
   () => groupTransactionService.list(props.group.id, toGroupListQuery(filters.value)),
   () => `${props.group.id}|${JSON.stringify(toGroupListQuery(filters.value))}`,
@@ -44,7 +53,11 @@ const members = useResource(
 const items = computed(() => list.data.value?.items ?? [])
 const totalCount = computed(() => list.data.value?.totalCount ?? 0)
 const totalPages = computed(() => list.data.value?.totalPages ?? 0)
-const hasFilters = computed(() => countActiveGroupFilters(filters.value) > 0)
+// O mês atual (período padrão) não conta como filtro: sem outros filtros, a lista vazia continua sendo "sem movimentações".
+const hasFilters = computed(() => {
+  const isDefault = filters.value.from === defaultPeriod.value.from && filters.value.to === defaultPeriod.value.to
+  return countActiveGroupFilters(isDefault ? { ...filters.value, from: undefined, to: undefined } : filters.value) > 0
+})
 const canCreate = computed(() => props.group.permissions.canCreateTransactions)
 
 function setFilters(next: GroupTransactionFilters): void {
@@ -98,6 +111,12 @@ function onSaved(): void {
 }
 
 onMounted(() => {
+  if (seedPeriod.value) {
+    // Só deixa de semear depois que a URL já tem o período (evita uma consulta intermediária sem datas).
+    void router.replace({ query: { ...route.query, ...defaultPeriod.value } }).finally(() => {
+      seedPeriod.value = false
+    })
+  }
   void categories.load()
 })
 
@@ -134,6 +153,7 @@ watch(
 
     <GroupTransactionFiltersBar
       :model-value="filters"
+      :default-period="defaultPeriod"
       :members="members.data.value ?? []"
       @update:model-value="setFilters"
     />

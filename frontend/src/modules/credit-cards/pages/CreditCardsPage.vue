@@ -15,6 +15,7 @@ import type { CreditCardDto } from '@/types/api'
 import { toAppError } from '@/utils/problem'
 import CreditCardFormDialog from '../components/CreditCardFormDialog.vue'
 import CreditCardItem from '../components/CreditCardItem.vue'
+import PayInvoiceDialog from '../components/PayInvoiceDialog.vue'
 
 const cards = useCreditCardsStore()
 const accounts = useAccountsStore()
@@ -27,6 +28,8 @@ const editing = ref<CreditCardDto | null>(null)
 const confirmVisible = ref(false)
 const toggling = ref<CreditCardDto | null>(null)
 const busy = ref(false)
+const payVisible = ref(false)
+const paying = ref<CreditCardDto | null>(null)
 
 const visibleCards = computed(() => cards.items.filter((c) => showInactive.value || c.isActive))
 const hasInactive = computed(() => cards.items.some((c) => !c.isActive))
@@ -45,6 +48,11 @@ function openCreate(): void {
 function openEdit(card: CreditCardDto): void {
   editing.value = card
   formVisible.value = true
+}
+
+function openPayInvoice(card: CreditCardDto): void {
+  paying.value = card
+  payVisible.value = true
 }
 
 function viewPurchases(card: CreditCardDto): void {
@@ -122,11 +130,19 @@ async function runToggle(card: CreditCardDto): Promise<void> {
 
     <ul v-else class="cards-page__grid" aria-label="Cartões de crédito">
       <li v-for="card in visibleCards" :key="card.id">
-        <CreditCardItem :card="card" :busy="busy" @edit="openEdit" @toggle="onToggle" @purchases="viewPurchases" />
+        <CreditCardItem
+          :card="card"
+          :busy="busy"
+          @edit="openEdit"
+          @toggle="onToggle"
+          @purchases="viewPurchases"
+          @pay-invoice="openPayInvoice"
+        />
       </li>
     </ul>
 
     <CreditCardFormDialog v-model:visible="formVisible" :card="editing" />
+    <PayInvoiceDialog v-model:visible="payVisible" :card="paying" @paid="cards.load(true)" />
 
     <AppConfirmDialog
       v-model:visible="confirmVisible"

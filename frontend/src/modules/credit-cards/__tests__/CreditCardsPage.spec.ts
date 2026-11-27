@@ -138,4 +138,86 @@ describe('CreditCardsPage', () => {
     expect(router.currentRoute.value.query).toEqual({ creditCardId: 'cc1' })
     wrapper.unmount()
   })
+
+  describe('Pagar fatura (D-057)', () => {
+    const invoices = [
+      {
+        dueDate: '2026-11-12',
+        totalAmount: 200,
+        paidAmount: 0,
+        remainingAmount: 200,
+        purchaseCount: 2,
+        isOverdue: true,
+      },
+      {
+        dueDate: '2026-12-12',
+        totalAmount: 480.9,
+        paidAmount: 0,
+        remainingAmount: 480.9,
+        purchaseCount: 3,
+        isOverdue: false,
+      },
+    ]
+
+    it('lista as faturas em aberto, pré-seleciona a aberta e paga de uma vez recarregando os cartões', async () => {
+      mock.onGet('/credit-cards').reply(200, [makeCreditCard()])
+      mock.onGet('/credit-cards/cc1/invoices').reply(200, invoices)
+      mock.onPost('/credit-cards/cc1/invoices/pay').reply(200, {
+        dueDate: '2026-12-12',
+        paymentDate: '2026-11-27',
+        paidAmount: 480.9,
+        purchasesPaid: 3,
+      })
+      const { wrapper } = await mountPage()
+
+      button(wrapper.element, 'Pagar fatura')!.click()
+      await flushPromises()
+
+      expect(document.body.textContent).toContain('Vence em 12/11/2026')
+      expect(document.body.textContent).toContain('atrasada')
+      expect(document.body.textContent).toContain('3 compras')
+      const selected = document.body.querySelector<HTMLInputElement>('input[name="invoice"]:checked')
+      expect(selected?.value).toBe('2026-12-12')
+
+      const loadsBefore = mock.history.get.filter((r) => r.url === '/credit-cards').length
+      const submit = document.body.querySelector<HTMLButtonElement>('.p-dialog button[type="submit"]')!
+      submit.click()
+      await flushPromises()
+
+      const post = mock.history.post.find((r) => r.url === '/credit-cards/cc1/invoices/pay')!
+      expect(JSON.parse(post.data)).toMatchObject({ dueDate: '2026-12-12' })
+      expect(mock.history.get.filter((r) => r.url === '/credit-cards').length).toBe(loadsBefore + 1)
+      wrapper.unmount()
+    })
+
+    it('sem faturas em aberto avisa e não permite confirmar', async () => {
+      mock.onGet('/credit-cards').reply(200, [makeCreditCard()])
+      mock.onGet('/credit-cards/cc1/invoices').reply(200, [])
+      const { wrapper } = await mountPage()
+
+      button(wrapper.element, 'Pagar fatura')!.click()
+      await flushPromises()
+
+      expect(document.body.querySelector('[data-testid="no-invoices"]')?.textContent).toContain(
+        'Não há faturas em aberto',
+      )
+      expect(document.body.querySelector<HTMLButtonElement>('.p-dialog button[type="submit"]')!.disabled).toBe(true)
+      wrapper.unmount()
+    })
+
+    it('mostra o erro devolvido pela API ao pagar', async () => {
+      mock.onGet('/credit-cards').reply(200, [makeCreditCard()])
+      mock.onGet('/credit-cards/cc1/invoices').reply(200, invoices)
+      mock.onPost('/credit-cards/cc1/invoices/pay').reply(409, { title: 'Conflito com um registro existente.' })
+      const { wrapper } = await mountPage()
+
+      button(wrapper.element, 'Pagar fatura')!.click()
+      await flushPromises()
+      document.body.querySelector<HTMLButtonElement>('.p-dialog button[type="submit"]')!.click()
+      await flushPromises()
+
+      expect(document.body.querySelector('.p-dialog [role="alert"]')?.textContent).toContain('Conflito')
+      wrapper.unmount()
+    })
+  })
 })

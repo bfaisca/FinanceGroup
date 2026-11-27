@@ -5,7 +5,9 @@ import Button from 'primevue/button'
 import PageHeader from '@/components/PageHeader.vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useCategoriesStore } from '@/stores/categories'
+import { useClockStore } from '@/stores/clock'
 import { useCreditCardsStore } from '@/stores/creditCards'
+import { hasNoFilters, monthPeriod } from '@/utils/period'
 import type { TransactionDetailDto, TransactionDto } from '@/types/api'
 import TransactionDetailDrawer from '../components/TransactionDetailDrawer.vue'
 import TransactionFiltersBar from '../components/TransactionFiltersBar.vue'
@@ -27,7 +29,14 @@ const accounts = useAccountsStore()
 const cards = useCreditCardsStore()
 
 // A URL é a fonte dos filtros: links compartilháveis e navegação vindas do dashboard/contas.
-const filters = computed(() => parseTransactionFilters(route.query))
+// Sem nenhum filtro na URL, a tela abre no mês atual (a URL passa a refletir o período). Limpar as datas depois respeita a escolha.
+const clock = useClockStore()
+const defaultPeriod = computed(() => monthPeriod(clock.today))
+const seedPeriod = ref(hasNoFilters(route.query, ['page', 'pageSize', 'sort', 'open', 'new']))
+const filters = computed(() => {
+  const parsed = parseTransactionFilters(route.query)
+  return seedPeriod.value ? { ...parsed, ...defaultPeriod.value } : parsed
+})
 const list = useTransactionList(() => toListQuery(filters.value))
 
 function setFilters(next: TransactionFilters): void {
@@ -82,6 +91,12 @@ function consumeNewParam(): void {
 }
 
 onMounted(() => {
+  if (seedPeriod.value) {
+    // Só deixa de semear depois que a URL já tem o período (evita uma consulta intermediária sem datas).
+    void router.replace({ query: { ...route.query, ...defaultPeriod.value } }).finally(() => {
+      seedPeriod.value = false
+    })
+  }
   void categories.load()
   void accounts.load()
   void cards.load()
@@ -100,7 +115,11 @@ watch(
   },
 )
 
-const hasFilters = computed(() => countActiveFilters(filters.value) > 0)
+// O mês atual (período padrão) não conta como filtro: sem outros filtros, a lista vazia continua sendo "sem movimentações".
+const hasFilters = computed(() => {
+  const isDefault = filters.value.from === defaultPeriod.value.from && filters.value.to === defaultPeriod.value.to
+  return countActiveFilters(isDefault ? { ...filters.value, from: undefined, to: undefined } : filters.value) > 0
+})
 </script>
 
 <template>
@@ -111,7 +130,7 @@ const hasFilters = computed(() => countActiveFilters(filters.value) > 0)
       </template>
     </PageHeader>
 
-    <TransactionFiltersBar :model-value="filters" @update:model-value="setFilters" />
+    <TransactionFiltersBar :model-value="filters" :default-period="defaultPeriod" @update:model-value="setFilters" />
 
     <p v-if="list.loadedOnce.value && !list.error.value" class="tx-page__count" aria-live="polite">
       {{ list.totalCount.value }} {{ list.totalCount.value === 1 ? 'movimentação' : 'movimentações' }}

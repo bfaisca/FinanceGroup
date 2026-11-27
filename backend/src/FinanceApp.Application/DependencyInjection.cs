@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<TransactionService>();
         services.AddScoped<CreditCardSummaryService>();
         services.AddScoped<CreditCardService>();
+        services.AddScoped<CreditCardInvoiceService>();
         services.AddScoped<InstallmentPlanService>();
         services.AddScoped<IRecurrenceGenerator, RecurrenceGenerator>();
         services.AddScoped<RecurrenceService>();

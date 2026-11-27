@@ -55,7 +55,12 @@ describe('GroupDetailPage', () => {
     await tab.trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.query).toEqual({ tab: 'transactions' })
+    // Ao abrir a aba sem filtros, ela semeia o mês atual na URL; os parâmetros da aba anterior (from/to do dashboard) são descartados.
+    expect(router.currentRoute.value.query).toEqual({
+      tab: 'transactions',
+      from: expect.any(String),
+      to: expect.any(String),
+    })
     expect(wrapper.find('[role="tab"][aria-selected="true"]').text()).toBe('Movimentações')
     wrapper.unmount()
   })

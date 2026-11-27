@@ -410,6 +410,22 @@ interface CreditCardDto {
 
 Validações: `name` 1–100, único por usuário sem diferenciar maiúsculas (`409 conflict`); `institution` ≤ 100; `creditLimit` ≥ 0, 2 casas, ≤ 9.999.999.999.999,99; `closingDay`/`dueDay` inteiros 1–31; `accountId` (se enviado) do usuário e ativa (inexistente/de outro → `400 errors.accountId`). `openInvoice.closingDate` é a data de fechamento (dia ajustado ao mês). Compras do cartão: `GET /transactions?creditCardId={id}`.
 
+### Pagar fatura (D-057, aditivo)
+
+Não existe entidade de fatura: a "fatura" é o conjunto de compras individuais não canceladas do cartão com o mesmo `dueDate` (D-025).
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `GET /credit-cards/{id}/invoices` | — | `200 CardInvoiceDto[]` (só faturas com valor restante > 0, por vencimento crescente) |
+| `POST /credit-cards/{id}/invoices/pay` | `{ dueDate: "YYYY-MM-DD", paymentDate?: "YYYY-MM-DD" }` | `200 PayInvoiceResultDto` |
+
+```ts
+interface CardInvoiceDto { dueDate: string; totalAmount: number; paidAmount: number; remainingAmount: number; purchaseCount: number; isOverdue: boolean }
+interface PayInvoiceResultDto { dueDate: string; paymentDate: string; paidAmount: number; purchasesPaid: number }
+```
+
+Regras: registra, numa única transação, um pagamento do **valor restante** de cada compra com aquele vencimento (as já parcialmente pagas são completadas); não cria despesa nova; sem conta associada ao pagamento; `paymentDate` padrão = hoje e não pode ser futura (`400 validation_error`); `dueDate` obrigatório (`400`); nada em aberto → `422 business_rule_violation`; cartão de outro usuário → `404`; alteração concorrente → `409`. Pagamento parcial da fatura não existe (use os pagamentos de cada compra).
+
 ---
 
 ## 12. Parcelamentos — `/api/v1/installment-plans` (Bearer)
@@ -778,3 +794,4 @@ Lançamento de **despesas individuais** pelo Telegram (D-053, D-054). O vínculo
 | 2026-11-21 | 1.5.2 | `GroupPaymentRequest.clearAccount` (bool, opcional, **somente no `PUT`**): na edição de um pagamento, omitir `accountId` **mantém** a conta privada atual (a conta nunca é devolvida pela API); `clearAccount: true` a desvincula; informar `accountId` troca. Ignorado no `POST`. Corrige o 1.5.1 (3), que limpava a conta ao omitir | Backend |
 | 2026-11-24 | 1.6.1 | Bot do Telegram: lançamento em grupo (seção 18, aditiva); D-056; migration `Etapa4e_TelegramGroups` | Coordenação (backend implementa) |
 | 2026-11-23 | 1.6 | Etapa 4d: bot do Telegram para lançar despesas individuais (seção 18, aditiva); decisões D-053 e D-054; migration incremental `Etapa4d_Telegram` | Coordenação (backend implementa) |
+| 2026-11-27 | 1.7 | Cartões: `GET /credit-cards/{id}/invoices` e `POST /credit-cards/{id}/invoices/pay` (aditivo); D-057 | Coordenação (backend implementa) |

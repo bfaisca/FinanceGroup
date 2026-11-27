@@ -9,7 +9,7 @@ namespace FinanceApp.API.Controllers;
 [Authorize]
 [Route("api/v1/credit-cards")]
 [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
-public sealed class CreditCardsController(CreditCardService cards) : ControllerBase
+public sealed class CreditCardsController(CreditCardService cards, CreditCardInvoiceService invoices) : ControllerBase
 {
     /// <param name="includeInactive">Inclui cartões desativados (padrão: false).</param>
     /// <param name="cancellationToken">Cancelamento da requisição.</param>
@@ -55,4 +55,21 @@ public sealed class CreditCardsController(CreditCardService cards) : ControllerB
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
     public async Task<ActionResult<CreditCardDto>> Activate(Guid id, CancellationToken cancellationToken) =>
         Ok(await cards.ActivateAsync(id, cancellationToken));
+
+    /// <summary>Faturas com valor em aberto (agrupa as compras do cartão por vencimento).</summary>
+    [HttpGet("{id:guid}/invoices")]
+    [ProducesResponseType<IReadOnlyList<CardInvoiceDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<IReadOnlyList<CardInvoiceDto>>> ListInvoices(Guid id, CancellationToken cancellationToken) =>
+        Ok(await invoices.ListAsync(id, cancellationToken));
+
+    /// <summary>Paga a fatura: dá baixa no restante de todas as compras do cartão com o vencimento informado.</summary>
+    [HttpPost("{id:guid}/invoices/pay")]
+    [ProducesResponseType<PayInvoiceResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity, "application/problem+json")]
+    public async Task<ActionResult<PayInvoiceResultDto>> PayInvoice(Guid id, [FromBody] PayInvoiceRequest request, CancellationToken cancellationToken) =>
+        Ok(await invoices.PayAsync(id, request, cancellationToken));
 }

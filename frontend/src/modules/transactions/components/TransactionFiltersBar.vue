@@ -20,6 +20,8 @@ const props = withDefaults(
     modelValue: TransactionFilters
     /** Oculta o filtro de conta (ex.: listagem já restrita a uma conta). */
     hideAccount?: boolean
+    /** Período padrão da tela (mês atual): não conta como filtro ativo e é o que "Limpar filtros" restaura. */
+    defaultPeriod?: { from: string; to: string }
     debounceMs?: number
   }>(),
   { hideAccount: false, debounceMs: 300 },
@@ -34,7 +36,17 @@ const cards = useCreditCardsStore()
 const searchText = ref(props.modelValue.search ?? '')
 const expanded = ref(false)
 
-const activeCount = computed(() => countActiveFilters(props.modelValue))
+const isDefaultPeriod = computed(
+  () =>
+    props.defaultPeriod !== undefined &&
+    props.modelValue.from === props.defaultPeriod.from &&
+    props.modelValue.to === props.defaultPeriod.to,
+)
+const activeCount = computed(() =>
+  countActiveFilters(
+    isDefaultPeriod.value ? { ...props.modelValue, from: undefined, to: undefined } : props.modelValue,
+  ),
+)
 
 /** Qualquer mudança de filtro volta para a primeira página. */
 function update(patch: Partial<TransactionFilters>): void {
@@ -106,6 +118,7 @@ function clearAll(): void {
     page: 1,
     pageSize: props.modelValue.pageSize,
     sort: props.modelValue.sort,
+    ...(props.defaultPeriod ? { from: props.defaultPeriod.from, to: props.defaultPeriod.to } : {}),
     // Mantém restrições estruturais da tela (ex.: conta fixa).
     accountId: props.hideAccount ? props.modelValue.accountId : undefined,
   })

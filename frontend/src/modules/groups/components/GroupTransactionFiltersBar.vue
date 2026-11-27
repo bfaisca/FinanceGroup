@@ -20,6 +20,8 @@ const props = withDefaults(
     modelValue: GroupTransactionFilters
     /** Membros (inclusive ex-membros) para os filtros "quem cadastrou" e "quem pagou". */
     members?: GroupMemberDto[]
+    /** Período padrão da aba (mês atual): não conta como filtro ativo e é o que "Limpar filtros" restaura. */
+    defaultPeriod?: { from: string; to: string }
     debounceMs?: number
   }>(),
   { members: () => [], debounceMs: 300 },
@@ -30,7 +32,17 @@ const emit = defineEmits<{ 'update:modelValue': [value: GroupTransactionFilters]
 const categories = useCategoriesStore()
 const searchText = ref(props.modelValue.search ?? '')
 const expanded = ref(false)
-const activeCount = computed(() => countActiveGroupFilters(props.modelValue))
+const isDefaultPeriod = computed(
+  () =>
+    props.defaultPeriod !== undefined &&
+    props.modelValue.from === props.defaultPeriod.from &&
+    props.modelValue.to === props.defaultPeriod.to,
+)
+const activeCount = computed(() =>
+  countActiveGroupFilters(
+    isDefaultPeriod.value ? { ...props.modelValue, from: undefined, to: undefined } : props.modelValue,
+  ),
+)
 
 /** Qualquer mudança de filtro volta para a primeira página. */
 function update(patch: Partial<GroupTransactionFilters>): void {
@@ -74,7 +86,12 @@ const memberOptions = computed(() =>
 function clearAll(): void {
   debounced.cancel()
   searchText.value = ''
-  emit('update:modelValue', { page: 1, pageSize: props.modelValue.pageSize, sort: props.modelValue.sort })
+  emit('update:modelValue', {
+    page: 1,
+    pageSize: props.modelValue.pageSize,
+    sort: props.modelValue.sort,
+    ...(props.defaultPeriod ? { from: props.defaultPeriod.from, to: props.defaultPeriod.to } : {}),
+  })
 }
 </script>
 

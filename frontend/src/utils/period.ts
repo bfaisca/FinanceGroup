@@ -43,6 +43,11 @@ export function shiftMonth(period: Period, delta: number): Period {
   return monthPeriod(toDateOnly(new Date(parsed.getFullYear(), parsed.getMonth() + delta, 1)))
 }
 
+/** `true` quando a query só tem parâmetros de página (aba, detalhe, ordenação…) e nenhum filtro: a tela deve abrir no mês atual. */
+export function hasNoFilters(query: Record<string, unknown>, pageKeys: readonly string[]): boolean {
+  return Object.keys(query).every((key) => pageKeys.includes(key))
+}
+
 export function isFullMonth(period: Period): boolean {
   const month = monthPeriod(period.from)
   return month.from === period.from && month.to === period.to

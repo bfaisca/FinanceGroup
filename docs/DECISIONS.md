@@ -306,3 +306,10 @@ Fluxo pedido: enviar `grupo` → escolher o grupo em botões → enviar valor e 
 - **Criação:** `GroupTransactionService.CreateAsync` com a identidade do vínculo (mesmo mecanismo de D-053): mesmas regras de D-046/D-047 (somente despesa; `Pending`; data de hoje; sem conta/pagamento/recorrência). As notificações do grupo (D-041) são geradas normalmente. `telegram_pending_expenses.group_id` (nulo = individual).
 - Fora do escopo: marcar como paga, recorrência e vencimento pelo bot (o usuário completa no site).
 
+## D-057 — Pagar fatura do cartão (baixa em lote) — Aceita (pedido do usuário) / Proposta (detalhes)
+Pedido: dar baixa em todas as compras de uma fatura de uma vez, em vez de uma por uma.
+- **Coerente com D-025:** não há entidade de fatura nem despesa nova; "pagar a fatura" registra o pagamento do **valor restante** de cada compra individual não cancelada do cartão com aquele vencimento, numa única transação (tudo ou nada; concorrência → 409).
+- **Só pagamento integral da fatura.** Compras já parcialmente pagas são completadas; parciais por compra continuam pelo pagamento da movimentação.
+- **Data** do pagamento: padrão hoje, nunca futura. **Sem conta** no pagamento (mesmo comportamento de compras de cartão sem conta, D-025), então não altera o saldo projetado além do que D-025 já define.
+- **Escopo:** apenas compras individuais (`GroupId` nulo) do próprio usuário.
+- **Em aberto para o usuário:** pagamento parcial da fatura (valor menor que o total) e escolha da conta que pagou ficam fora até decisão explícita.
