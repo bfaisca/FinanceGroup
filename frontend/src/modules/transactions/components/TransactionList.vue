@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import DataTable, { type DataTableRowClickEvent, type DataTableSortEvent } from 'primevue/datatable'
@@ -43,6 +44,7 @@ const emit = defineEmits<{
   retry: []
 }>()
 
+const router = useRouter()
 const isTabletUp = useMediaQuery(BREAKPOINTS.tablet)
 
 const sortField = computed(() => (props.sort.startsWith('-') ? props.sort.slice(1) : props.sort))
@@ -55,8 +57,21 @@ function onSort(event: DataTableSortEvent): void {
   emit('update:sort', event.sortOrder === -1 ? `-${event.sortField}` : event.sortField)
 }
 
+/** Pagamentos de grupo não são movimentações individuais (D-060): abrem a movimentação dentro do grupo. */
+function openRow(tx: TransactionDto): void {
+  if (tx.groupPayment) {
+    void router.push({
+      name: 'group-detail',
+      params: { id: tx.groupPayment.groupId },
+      query: { tab: 'transactions', open: tx.groupPayment.groupTransactionId },
+    })
+    return
+  }
+  emit('open', tx)
+}
+
 function onRowClick(event: DataTableRowClickEvent): void {
-  emit('open', event.data as TransactionDto)
+  openRow(event.data as TransactionDto)
 }
 
 function onPage(event: PageState): void {
@@ -120,7 +135,7 @@ function summary(tx: TransactionDto): string {
               type="button"
               class="tx-list__link"
               :aria-label="`Abrir detalhes: ${summary(data)}`"
-              @click="emit('open', data)"
+              @click="openRow(data)"
             >
               {{ data.description }}
             </button>
@@ -132,6 +147,15 @@ function summary(tx: TransactionDto): string {
               :icon="data.categoryIcon"
             />
             <TransactionOriginBadges class="tx-list__origin" :transaction="data" linked />
+          </template>
+        </Column>
+        <Column header="Origem">
+          <template #body="{ data }: { data: TransactionDto }">
+            <span v-if="data.groupPayment" class="tx-list__group" data-testid="origin-group">
+              <i class="pi pi-users" aria-hidden="true" />
+              <span class="sr-only">Grupo: </span>{{ data.groupPayment.groupName }}
+            </span>
+            <span v-else class="tx-list__individual" data-testid="origin-individual">Individual</span>
           </template>
         </Column>
         <Column v-if="!hideAccount" header="Conta">
@@ -157,12 +181,7 @@ function summary(tx: TransactionDto): string {
 
       <ul v-else class="tx-cards" aria-label="Movimentações">
         <li v-for="tx in items" :key="tx.id">
-          <button
-            type="button"
-            class="tx-card"
-            :aria-label="`Abrir detalhes: ${summary(tx)}`"
-            @click="emit('open', tx)"
-          >
+          <button type="button" class="tx-card" :aria-label="`Abrir detalhes: ${summary(tx)}`" @click="openRow(tx)">
             <span class="tx-card__row">
               <span class="tx-card__title">{{ tx.description }}</span>
               <TransactionAmount :amount="tx.amount" :type="tx.type" />
@@ -181,6 +200,8 @@ function summary(tx: TransactionDto): string {
               :transaction="tx"
             />
             <span class="tx-card__meta">
+              <span v-if="tx.groupPayment" data-testid="origin-group">Grupo: {{ tx.groupPayment.groupName }}</span>
+              <span v-else data-testid="origin-individual">Individual</span>
               <span>Data: {{ formatDate(tx.transactionDate) }}</span>
               <span v-if="tx.dueDate">Vencimento: {{ formatDate(tx.dueDate) }}</span>
               <span v-if="!hideAccount && tx.accountName">Conta: {{ tx.accountName }}</span>
@@ -237,6 +258,17 @@ function summary(tx: TransactionDto): string {
 .tx-list__category {
   margin-top: 0.25rem;
   font-size: 0.8125rem;
+  color: var(--gf-text-muted);
+}
+
+.tx-list__group {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: center;
+  font-weight: 600;
+}
+
+.tx-list__individual {
   color: var(--gf-text-muted);
 }
 

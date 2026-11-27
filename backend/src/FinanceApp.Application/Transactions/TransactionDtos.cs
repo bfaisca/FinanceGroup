@@ -31,7 +31,14 @@ public sealed record TransactionDto(
     Guid? CreditCardId,
     string? CreditCardName,
     InstallmentRefDto? Installment,
-    Guid? RecurrenceRuleId);
+    Guid? RecurrenceRuleId,
+    GroupPaymentRefDto? GroupPayment = null);
+
+/// <summary>
+/// Linha de exibição de um pagamento de grupo feito pelo próprio usuário com uma conta sua (D-060). Somente leitura:
+/// a movimentação continua sendo um único registro do grupo; <c>id</c> da linha é o do pagamento.
+/// </summary>
+public sealed record GroupPaymentRefDto(Guid GroupId, string GroupName, Guid GroupTransactionId);
 
 public sealed record TransactionPaymentDto(
     Guid Id,

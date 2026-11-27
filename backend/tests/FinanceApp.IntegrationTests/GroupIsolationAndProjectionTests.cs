@@ -5,6 +5,7 @@ using FinanceApp.Application.Common;
 using FinanceApp.Application.Reports;
 using FinanceApp.Application.Transactions;
 using FinanceApp.Domain.Categories;
+using FinanceApp.Domain.Transactions;
 using FinanceApp.IntegrationTests.Infrastructure;
 using static FinanceApp.IntegrationTests.Infrastructure.ApiTestHelpers;
 
@@ -94,5 +95,56 @@ public sealed class GroupIsolationAndProjectionTests : IDisposable
         Assert.Equal(460m, biaProjected.ProjectedBalance);
         // A Dona não tem conta: nada a projetar; o pagamento da Ana não aparece em lugar nenhum dela.
         Assert.Empty(await owner.GetOk<List<AccountDto>>("/api/v1/accounts"));
+    }
+
+    /// <summary>D-060: pagamentos de grupo feitos com conta própria aparecem na listagem individual (somente leitura), identificando o grupo.</summary>
+    [Fact]
+    public async Task IndividualList_ShowsOwnGroupPaymentsWithAccount_IdentifyingTheGroup()
+    {
+        var owner = await h.NewUserAsync("Dona");
+        var ana = await h.NewUserAsync("Ana");
+        var bia = await h.NewUserAsync("Bia");
+        var group = await h.CreateGroupAsync(owner, "Casa da praia");
+        await h.JoinAsync(owner, group.Id, ana);
+        await h.JoinAsync(owner, group.Id, bia);
+        var account = await h.CreateAccountAsync(ana, "Corrente", balance: 1000m, referenceDate: Nov(1));
+        var biaAccount = await h.CreateAccountAsync(bia, "Da Bia", balance: 500m, referenceDate: Nov(1));
+        var food = await h.CategoryIdAsync(ana, "Alimentação");
+
+        await h.CreateTxAsync(ana, "Individual", "Expense", 40m, food, Nov(12), accountId: account.Id);
+        var g1 = await h.CreateGroupTxAsync(owner, group.Id, "Aluguel", 500m, Nov(2));
+        await h.PayGroupTxAsync(ana, group.Id, g1.Id, 80m, Nov(10), account.Id, interest: 5m);
+        await h.PayGroupTxAsync(ana, group.Id, g1.Id, 30m, Nov(11)); // sem conta: não aparece
+        await h.PayGroupTxAsync(bia, group.Id, g1.Id, 40m, Nov(12), biaAccount.Id); // de outra pessoa: não aparece para a Ana
+
+        var list = await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?sort=transactionDate");
+
+        Assert.Equal(2, list.TotalCount);
+        Assert.Equal(new[] { "Aluguel", "Individual" }, list.Items.Select(t => t.Description).ToArray());
+        var entry = list.Items[0];
+        Assert.Equal(85m, entry.Amount);
+        Assert.Equal(TransactionStatus.Paid, entry.Status);
+        Assert.Equal(Nov(10), entry.TransactionDate);
+        Assert.Equal(account.Id, entry.AccountId);
+        Assert.NotNull(entry.GroupPayment);
+        Assert.Equal((group.Id, "Casa da praia", g1.Id), (entry.GroupPayment!.GroupId, entry.GroupPayment.GroupName, entry.GroupPayment.GroupTransactionId));
+        Assert.Null(list.Items[1].GroupPayment);
+
+        // Paginação com intercalação: página 2 de tamanho 1 devolve o segundo item da ordem.
+        var page2 = await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?sort=-transactionDate&pageSize=1&page=2");
+        Assert.Equal("Aluguel", Assert.Single(page2.Items).Description);
+        Assert.Equal(2, page2.TotalCount);
+
+        // Filtros sem equivalente em pagamentos de grupo os excluem; a conta filtra normalmente.
+        var pending = await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?status=Pending");
+        Assert.Equal("Individual", Assert.Single(pending.Items).Description);
+        Assert.Equal(2, (await ana.GetOk<PagedResult<TransactionDto>>($"/api/v1/transactions?accountId={account.Id}")).TotalCount);
+        Assert.Equal(0, (await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?search=aluguel&from=2026-11-11")).TotalCount);
+        Assert.Equal(1, (await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?search=aluguel")).TotalCount);
+
+        // Não entram nos totais do dashboard individual e a linha não abre como movimentação individual.
+        var dashboard = await ana.GetOk<DashboardDto>("/api/v1/dashboard?from=2026-11-01&to=2026-11-30");
+        Assert.Equal(40m, dashboard.Totals.Expense);
+        await ReadProblemAsync(await ana.Get($"/api/v1/transactions/{entry.Id}"), HttpStatusCode.NotFound, "not_found");
     }
 }

@@ -246,6 +246,17 @@ export interface TransactionDto {
   installment: TransactionInstallment | null
   /** Não nulo = ocorrência de recorrência. */
   recurrenceRuleId: Uuid | null
+  /**
+   * D-060: preenchido quando a linha é um pagamento de grupo feito com uma conta sua (somente leitura). O `id` da
+   * linha é o do pagamento; para abrir a movimentação, vá ao grupo (`groupTransactionId`).
+   */
+  groupPayment?: GroupPaymentRef | null
+}
+
+export interface GroupPaymentRef {
+  groupId: Uuid
+  groupName: string
+  groupTransactionId: Uuid
 }
 
 /** §10: parcela de um plano de parcelamento. */

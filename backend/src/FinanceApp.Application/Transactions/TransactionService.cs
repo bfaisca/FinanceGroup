@@ -35,6 +35,13 @@ public sealed class TransactionService(
         var filtered = ApplyFilters(OwnQuery(userId), query, today);
         var total = await filtered.CountAsync(cancellationToken).ConfigureAwait(false);
 
+        // D-060: pagamentos de grupo feitos com uma conta do usuário aparecem na listagem (somente leitura).
+        var groupEntries = await new GroupPaymentEntries(db).ListAsync(userId, query, cancellationToken).ConfigureAwait(false);
+        if (groupEntries.Count > 0)
+        {
+            return await ListMergedAsync(filtered, groupEntries, query, total, today, cancellationToken).ConfigureAwait(false);
+        }
+
         var rows = await filtered.ApplyContractSort(query.Sort)
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
@@ -43,6 +50,29 @@ public sealed class TransactionService(
             .ConfigureAwait(false);
 
         return PagedResult.Create(rows.Select(r => r.ToDto(today)).ToList(), query.Page, query.PageSize, total);
+    }
+
+    /// <summary>Intercala as movimentações individuais com os pagamentos de grupo respeitando a ordenação e a paginação.</summary>
+    private static async Task<PagedResult<TransactionDto>> ListMergedAsync(
+        IQueryable<Transaction> filtered,
+        List<TransactionDto> groupEntries,
+        TransactionListQuery query,
+        int individualTotal,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
+        var needed = query.Page * query.PageSize;
+        var individual = await filtered.ApplyContractSort(query.Sort)
+            .Take(needed)
+            .ToRows()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var page = GroupPaymentEntries.Sort(individual.Select(r => r.ToDto(today)).Concat(groupEntries), query.Sort)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .ToList();
+        return PagedResult.Create(page, query.Page, query.PageSize, individualTotal + groupEntries.Count);
     }
 
     public Task<TransactionDetailDto> GetAsync(Guid id, CancellationToken cancellationToken) =>

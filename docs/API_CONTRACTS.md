@@ -309,6 +309,8 @@ interface TransactionHistoryEntryDto {
 | `POST /transactions/{id}/payments` | `{ amount, paymentDate, accountId?, paymentMethod? }` | `201 TransactionDetailDto` |
 | `DELETE /transactions/{id}/payments/{paymentId}` | — | `200 TransactionDetailDto` |
 
+**Pagamentos de grupo na listagem (D-060, aditivo):** `GET /transactions` também devolve, **somente leitura**, os pagamentos de grupo feitos pelo próprio usuário **com uma conta sua** (D-033), como linhas com `groupPayment: { groupId, groupName, groupTransactionId }` (nas demais, `groupPayment` é `null`/ausente). Nessas linhas: `id` = id do **pagamento** (não abre em `GET /transactions/{id}` → `404`); `amount`/`paidAmount` = principal + juros; `transactionDate`/`paidAt` = data do pagamento; `status` = `Paid` (despesa) ou `Received` (receita); `accountId`/`accountName`/`paymentMethod` = os do pagamento; sem `dueDate`. Entram nos filtros `from`/`to` (data do pagamento), `type`, `categoryId`, `accountId`, `search` e `status` (`Paid`/`Received`); `dueFrom`/`dueTo`, `creditCardId`, `installmentPlanId`, `recurrenceRuleId` ou outras situações as excluem. Não entram em dashboard, relatórios nem totais individuais; movimentações de grupo canceladas não aparecem. A movimentação continua sendo um único registro do grupo.
+
 **Lançamento retroativo (D-059, aditivo):** `CreateTransactionRequest.paymentDate?: string` (`YYYY-MM-DD`). Quando informado, a movimentação nasce quitada: registra, na mesma gravação, um pagamento/recebimento do valor total nessa data (`Paid` para despesa, `Received` para receita; usa `accountId`/`paymentMethod` da própria requisição). `400 validation_error` em `errors.paymentDate` se for futura, anterior à `transactionDate`, junto de `creditCardId` (compras no cartão são pagas pela fatura) ou com `status = Planned`.
 
 ```ts
@@ -798,3 +800,4 @@ Lançamento de **despesas individuais** pelo Telegram (D-053, D-054). O vínculo
 | 2026-11-23 | 1.6 | Etapa 4d: bot do Telegram para lançar despesas individuais (seção 18, aditiva); decisões D-053 e D-054; migration incremental `Etapa4d_Telegram` | Coordenação (backend implementa) |
 | 2026-11-27 | 1.7 | Cartões: `GET /credit-cards/{id}/invoices` e `POST /credit-cards/{id}/invoices/pay` (aditivo); D-057 | Coordenação (backend implementa) |
 | 2026-11-27 | 1.7.1 | `CreateTransactionRequest.paymentDate` (lançamento retroativo, aditivo); D-059 | Coordenação (backend implementa) |
+| 2026-11-27 | 1.8 | `TransactionDto.groupPayment` e pagamentos de grupo com conta própria na listagem individual (aditivo, somente leitura); D-060 | Coordenação (backend implementa) |

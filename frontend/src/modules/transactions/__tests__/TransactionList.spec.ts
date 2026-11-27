@@ -142,3 +142,53 @@ describe('TransactionList (tablet/desktop: tabela)', () => {
     wrapper.unmount()
   })
 })
+
+describe('TransactionList — origem (D-060)', () => {
+  const original = window.matchMedia
+  afterEach(() => {
+    window.matchMedia = original
+  })
+
+  function desktop() {
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+    })) as unknown as typeof window.matchMedia
+  }
+
+  const groupRow = makeTransaction({
+    id: 'pay1',
+    description: 'Aluguel',
+    groupPayment: { groupId: 'g1', groupName: 'Casa da praia', groupTransactionId: 'gt1' },
+  })
+
+  it('mostra "Individual" por padrão e o nome do grupo nos pagamentos de grupo (desktop)', async () => {
+    desktop()
+    const wrapper = mountList({ items: [makeTransaction({ id: 'a' }), groupRow] })
+    await flushPromises()
+
+    expect(wrapper.findAll('th').map((h) => h.text())).toContain('Origem')
+    expect(wrapper.find('[data-testid="origin-individual"]').text()).toBe('Individual')
+    expect(wrapper.find('[data-testid="origin-group"]').text()).toContain('Casa da praia')
+    wrapper.unmount()
+  })
+
+  it('abrir um pagamento de grupo leva à movimentação dentro do grupo, sem emitir "open"', async () => {
+    desktop()
+    const { wrapper, router } = mountWithPlugins(TransactionList, {
+      props: { ...baseProps, items: [groupRow] } as never,
+      pinia: createPinia(),
+    })
+    await flushPromises()
+    await wrapper.find('.tx-list__link').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(router.currentRoute.value.fullPath).toBe('/groups/g1?tab=transactions&open=gt1')
+    wrapper.unmount()
+  })
+})
