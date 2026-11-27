@@ -7,7 +7,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { http } from '@/services/http'
 import { useAuthStore } from '@/stores/auth'
 import { useClockStore } from '@/stores/clock'
-import { makeDashboard } from '@/test/fixtures'
+import { makeDashboard, makeTransaction } from '@/test/fixtures'
 import { mountWithPlugins } from '@/test/mount'
 import DashboardPage from '../pages/DashboardPage.vue'
 
@@ -42,6 +42,7 @@ describe('DashboardPage', () => {
   let mock: MockAdapter
   beforeEach(() => {
     mock = new MockAdapter(http)
+    mock.onGet('/transactions').reply(200, { items: [], page: 1, pageSize: 5, totalCount: 0, totalPages: 0 })
   })
   afterEach(() => mock.restore())
 
@@ -49,7 +50,10 @@ describe('DashboardPage', () => {
     mock.onGet('/dashboard').reply(200, makeDashboard())
     const { wrapper } = await mountDashboard('/dashboard?from=2026-11-01&to=2026-11-30')
 
-    expect(mock.history.get[0]?.params).toEqual({ from: '2026-11-01', to: '2026-11-30' })
+    expect(mock.history.get.find((r) => r.url === '/dashboard')?.params).toEqual({
+      from: '2026-11-01',
+      to: '2026-11-30',
+    })
     const text = wrapper.text()
     expect(text).toContain('Saldo informado')
     expect(text).toContain('Saldo projetado')
@@ -241,7 +245,10 @@ describe('DashboardPage', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.query).toEqual({ from: '2026-10-01', to: '2026-10-31' })
-    expect(mock.history.get.at(-1)?.params).toEqual({ from: '2026-10-01', to: '2026-10-31' })
+    expect(mock.history.get.filter((r) => r.url === '/dashboard').at(-1)?.params).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-31',
+    })
     wrapper.unmount()
   })
 
@@ -250,6 +257,32 @@ describe('DashboardPage', () => {
     const { wrapper, pinia } = await mountDashboard('/dashboard')
     expect(mock.history.get[0]?.params).toEqual({ from: '2026-11-01', to: '2026-11-30' })
     expect(useClockStore(pinia).fromServer).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('mostra as 5 últimas movimentações registradas, inclusive pagamentos de grupo', async () => {
+    mock.onGet('/dashboard').reply(200, makeDashboard())
+    mock.onGet('/transactions').reply(200, {
+      items: [
+        makeTransaction({ id: 'a', description: 'Mercado' }),
+        makeTransaction({
+          id: 'p1',
+          description: 'Aluguel',
+          groupPayment: { groupId: 'g1', groupName: 'Casa da praia', groupTransactionId: 'gt1' },
+        }),
+      ],
+      page: 1,
+      pageSize: 5,
+      totalCount: 2,
+      totalPages: 1,
+    })
+    const { wrapper } = await mountDashboard('/dashboard?from=2026-11-01&to=2026-11-30')
+
+    const call = mock.history.get.find((r) => r.url === '/transactions')!
+    expect(call.params).toEqual({ page: 1, pageSize: 5, sort: '-createdAt' })
+    const list = wrapper.find('[aria-label="Últimas movimentações"]')
+    expect(list.text()).toContain('Mercado')
+    expect(list.text()).toContain('Grupo: Casa da praia')
     wrapper.unmount()
   })
 })

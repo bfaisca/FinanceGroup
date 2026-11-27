@@ -202,7 +202,7 @@ public sealed class DashboardApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Dashboard_UpcomingDues_AreLimitedToTen_Ordered_AndExcludeSettledAndCanceled()
+    public async Task Dashboard_UpcomingDues_AreLimitedToFive_Ordered_AndExcludeSettledAndCanceled()
     {
         var user = await h.NewUserAsync();
         var food = await h.CategoryIdAsync(user, "Alimentação");
@@ -218,9 +218,9 @@ public sealed class DashboardApiTests : IDisposable
 
         var dashboard = await user.GetOk<DashboardDto>("/api/v1/dashboard?from=2026-06-01&to=2026-06-30");
 
-        Assert.Equal(10, dashboard.UpcomingDues.Count);
+        Assert.Equal(5, dashboard.UpcomingDues.Count);
         Assert.Equal(
-            Enumerable.Range(0, 10).Select(i => $"Conta {i:00}"),
+            Enumerable.Range(0, 5).Select(i => $"Conta {i:00}"),
             dashboard.UpcomingDues.Select(t => t.Description));
         Assert.Equal([true, true, true], dashboard.UpcomingDues.Take(3).Select(t => t.Status == TransactionStatus.Overdue));
         Assert.Equal(FixedToday.AddDays(-3), dashboard.UpcomingDues[0].DueDate);

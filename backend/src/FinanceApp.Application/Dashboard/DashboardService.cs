@@ -23,7 +23,7 @@ public sealed class DashboardService(
     CreditCardSummaryService cardSummaries,
     IValidator<DashboardQuery> validator)
 {
-    public const int UpcomingDuesLimit = 10;
+    public const int UpcomingDuesLimit = 5;
     public const int UpcomingDuesWindowDays = 30;
     public const int HistoryMonths = 6;
 
@@ -91,14 +91,32 @@ public sealed class DashboardService(
             .GetTotalsAsync(ActiveTransactions(userId).Where(t => t.TransactionDate >= from && t.TransactionDate <= to), cancellationToken)
             .ConfigureAwait(false);
 
+        // D-061: o que o usuário pagou em grupos (na data do pagamento) conta como despesa já paga.
+        var (groupExpense, groupIncome) = await GetGroupPaidAsync(userId, from, to, cancellationToken).ConfigureAwait(false);
+        var income = totals.Income + groupIncome;
+        var expense = totals.Expense + groupExpense;
         return new DashboardTotalsDto(
-            totals.Income,
-            totals.Expense,
-            totals.Result,
-            totals.ReceivedIncome,
+            income,
+            expense,
+            income - expense,
+            totals.ReceivedIncome + groupIncome,
             totals.PendingIncome,
-            totals.PaidExpense,
+            totals.PaidExpense + groupExpense,
             totals.PendingExpense);
+    }
+
+    private async Task<(decimal Expense, decimal Income)> GetGroupPaidAsync(
+        Guid userId, DateOnly from, DateOnly to, CancellationToken cancellationToken)
+    {
+        var rows = await GroupPaymentEntries.Mine(db, userId)
+            .Where(p => p.PaymentDate >= from && p.PaymentDate <= to)
+            .GroupBy(p => p.Type)
+            .Select(g => new { Type = g.Key, Total = g.Sum(p => p.Total) })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return (
+            rows.Where(r => r.Type == TransactionType.Expense).Sum(r => r.Total),
+            rows.Where(r => r.Type == TransactionType.Income).Sum(r => r.Total));
     }
 
     /// <summary>Despesas agrupadas pela categoria RAIZ (subcategorias somadas ao pai), em ordem decrescente.</summary>
@@ -115,6 +133,19 @@ public sealed class DashboardService(
             .Select(g => new { RootId = g.Key, Total = g.Sum(t => t.Amount) })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        // D-061: pagamentos do usuário em grupos entram pela categoria raiz da movimentação do grupo.
+        var groupGroups = await GroupPaymentEntries.Mine(db, userId)
+            .Where(p => p.Type == TransactionType.Expense && p.PaymentDate >= from && p.PaymentDate <= to)
+            .GroupBy(p => p.RootCategoryId)
+            .Select(g => new { RootId = g.Key, Total = g.Sum(p => p.Total) })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        groups = groups
+            .Concat(groupGroups)
+            .GroupBy(g => g.RootId)
+            .Select(g => new { RootId = g.Key, Total = g.Sum(x => x.Total) })
+            .ToList();
         if (groups.Count == 0)
         {
             return [];
@@ -169,6 +200,14 @@ public sealed class DashboardService(
             .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Type, Total = g.Sum(t => t.Amount) })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        var groupRows = await GroupPaymentEntries.Mine(db, userId)
+            .Where(p => p.PaymentDate >= firstMonth && p.PaymentDate < endExclusive)
+            .GroupBy(p => new { p.PaymentDate.Year, p.PaymentDate.Month, p.Type })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Type, Total = g.Sum(p => p.Total) })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        rows = rows.Concat(groupRows).ToList();
 
         var months = new List<MonthlyHistoryDto>(HistoryMonths);
         for (var i = 0; i < HistoryMonths; i++)

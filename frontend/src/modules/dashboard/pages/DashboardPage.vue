@@ -16,6 +16,7 @@ import CreditCardsSummary from '../components/CreditCardsSummary.vue'
 import ExpensesByCategoryChart from '../components/ExpensesByCategoryChart.vue'
 import MonthlyHistoryChart from '../components/MonthlyHistoryChart.vue'
 import PeriodSelector from '../components/PeriodSelector.vue'
+import RecentTransactionsList from '../components/RecentTransactionsList.vue'
 import UpcomingDuesList from '../components/UpcomingDuesList.vue'
 import { useDashboard } from '../composables'
 import { accountsWithoutBalanceMessage, isDashboardEmpty } from '../summary'
@@ -57,6 +58,15 @@ const resultTone = computed(() => {
 })
 
 function openTransaction(tx: TransactionDto): void {
+  if (tx.groupPayment) {
+    // Pagamento de grupo (D-060): a movimentação é aberta dentro do grupo.
+    void router.push({
+      name: 'group-detail',
+      params: { id: tx.groupPayment.groupId },
+      query: { tab: 'transactions', open: tx.groupPayment.groupTransactionId },
+    })
+    return
+  }
   void router.push({ name: 'transactions', query: { open: tx.id } })
 }
 </script>
@@ -209,6 +219,11 @@ function openTransaction(tx: TransactionDto): void {
         <section class="surface-card dashboard__block" aria-labelledby="upcoming-title">
           <h2 id="upcoming-title" class="dashboard__title">Próximos vencimentos</h2>
           <UpcomingDuesList :items="data.upcomingDues" :today="data.today" @open="openTransaction" />
+        </section>
+
+        <section class="surface-card dashboard__block" aria-labelledby="recent-title">
+          <h2 id="recent-title" class="dashboard__title">Últimas movimentações</h2>
+          <RecentTransactionsList :refresh-key="`${period.from}|${period.to}|${data.today}`" @open="openTransaction" />
         </section>
       </template>
     </template>

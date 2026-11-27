@@ -40,8 +40,9 @@ public sealed class GroupIsolationAndProjectionTests : IDisposable
         await h.PayGroupTxAsync(owner, group.Id, groupTx.Id, 200m, Nov(11));
         await h.CreateTxAsync(owner, "Individual", "Expense", 40m, food, Nov(12));
 
+        // D-060/D-061: o pagamento do próprio usuário no grupo aparece (somente leitura) e conta como pago no dashboard.
         var list = await h.ListAsync(owner);
-        Assert.Equal(new[] { "Individual" }, list.Items.Select(t => t.Description).ToArray());
+        Assert.Equal(new[] { "Individual", "Do grupo" }, list.Items.Select(t => t.Description).OrderBy(d => d == "Do grupo").ToArray());
         await ReadProblemAsync(await owner.Get($"/api/v1/transactions/{groupTx.Id}"), HttpStatusCode.NotFound, "not_found");
         await ReadProblemAsync(await owner.Get($"/api/v1/transactions/{groupTx.Id}/history"), HttpStatusCode.NotFound, "not_found");
         await ReadProblemAsync(await owner.Post($"/api/v1/transactions/{groupTx.Id}/payments", new { amount = 10m, paymentDate = Nov(12) }), HttpStatusCode.NotFound, "not_found");
@@ -49,11 +50,11 @@ public sealed class GroupIsolationAndProjectionTests : IDisposable
         await ReadProblemAsync(await owner.Delete($"/api/v1/transactions/{groupTx.Id}"), HttpStatusCode.NotFound, "not_found");
 
         var dashboard = await owner.GetOk<DashboardDto>("/api/v1/dashboard?from=2026-11-01&to=2026-11-30");
-        Assert.Equal((40m, 0m), (dashboard.Totals.Expense, dashboard.Totals.PaidExpense));
-        Assert.Equal(40m, Assert.Single(dashboard.ExpensesByCategory).Total);
+        Assert.Equal((240m, 200m), (dashboard.Totals.Expense, dashboard.Totals.PaidExpense));
+        Assert.Equal(240m, Assert.Single(dashboard.ExpensesByCategory).Total);
         Assert.Empty(dashboard.UpcomingDues.Where(t => t.Description == "Do grupo"));
         var summary = await owner.GetOk<SummaryReportDto>("/api/v1/reports/summary?from=2026-11-01&to=2026-11-30");
-        Assert.Equal((40m, 0m), (summary.Totals.Expense, summary.Totals.PaidExpense));
+        Assert.Equal((40m, 0m), (summary.Totals.Expense, summary.Totals.PaidExpense)); // relatórios: só individual
         var byCategory = await owner.GetOk<System.Text.Json.JsonElement>("/api/v1/reports/by-category?from=2026-11-01&to=2026-11-30");
         Assert.DoesNotContain("Do grupo", byCategory.GetRawText(), StringComparison.Ordinal);
         Assert.Equal(40m, (await owner.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?status=Pending")).Items.Sum(t => t.Amount));
@@ -114,13 +115,14 @@ public sealed class GroupIsolationAndProjectionTests : IDisposable
         await h.CreateTxAsync(ana, "Individual", "Expense", 40m, food, Nov(12), accountId: account.Id);
         var g1 = await h.CreateGroupTxAsync(owner, group.Id, "Aluguel", 500m, Nov(2));
         await h.PayGroupTxAsync(ana, group.Id, g1.Id, 80m, Nov(10), account.Id, interest: 5m);
-        await h.PayGroupTxAsync(ana, group.Id, g1.Id, 30m, Nov(11)); // sem conta: não aparece
+        await h.PayGroupTxAsync(ana, group.Id, g1.Id, 30m, Nov(11)); // sem conta: também aparece (sem conta), mas não afeta o saldo
         await h.PayGroupTxAsync(bia, group.Id, g1.Id, 40m, Nov(12), biaAccount.Id); // de outra pessoa: não aparece para a Ana
 
         var list = await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?sort=transactionDate");
 
-        Assert.Equal(2, list.TotalCount);
-        Assert.Equal(new[] { "Aluguel", "Individual" }, list.Items.Select(t => t.Description).ToArray());
+        Assert.Equal(3, list.TotalCount);
+        // Ordem por data: Individual (12/11), Aluguel sem conta (11/11) e Aluguel com conta (10/11) — crescente.
+        Assert.Equal(new[] { "Aluguel", "Aluguel", "Individual" }, list.Items.Select(t => t.Description).ToArray());
         var entry = list.Items[0];
         Assert.Equal(85m, entry.Amount);
         Assert.Equal(TransactionStatus.Paid, entry.Status);
@@ -128,23 +130,27 @@ public sealed class GroupIsolationAndProjectionTests : IDisposable
         Assert.Equal(account.Id, entry.AccountId);
         Assert.NotNull(entry.GroupPayment);
         Assert.Equal((group.Id, "Casa da praia", g1.Id), (entry.GroupPayment!.GroupId, entry.GroupPayment.GroupName, entry.GroupPayment.GroupTransactionId));
-        Assert.Null(list.Items[1].GroupPayment);
+        Assert.NotNull(list.Items[1].GroupPayment);
+        Assert.Null(list.Items[1].AccountId);
+        Assert.Null(list.Items[2].GroupPayment);
 
         // Paginação com intercalação: página 2 de tamanho 1 devolve o segundo item da ordem.
         var page2 = await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?sort=-transactionDate&pageSize=1&page=2");
         Assert.Equal("Aluguel", Assert.Single(page2.Items).Description);
-        Assert.Equal(2, page2.TotalCount);
+        Assert.Equal(3, page2.TotalCount);
 
         // Filtros sem equivalente em pagamentos de grupo os excluem; a conta filtra normalmente.
         var pending = await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?status=Pending");
         Assert.Equal("Individual", Assert.Single(pending.Items).Description);
         Assert.Equal(2, (await ana.GetOk<PagedResult<TransactionDto>>($"/api/v1/transactions?accountId={account.Id}")).TotalCount);
-        Assert.Equal(0, (await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?search=aluguel&from=2026-11-11")).TotalCount);
-        Assert.Equal(1, (await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?search=aluguel")).TotalCount);
+        Assert.Equal(1, (await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?search=aluguel&from=2026-11-11")).TotalCount);
+        Assert.Equal(2, (await ana.GetOk<PagedResult<TransactionDto>>("/api/v1/transactions?search=aluguel")).TotalCount);
 
-        // Não entram nos totais do dashboard individual e a linha não abre como movimentação individual.
+        // D-061: o que a Ana pagou no grupo (85 + 30) soma às despesas pagas do dashboard; relatórios seguem só individuais.
         var dashboard = await ana.GetOk<DashboardDto>("/api/v1/dashboard?from=2026-11-01&to=2026-11-30");
-        Assert.Equal(40m, dashboard.Totals.Expense);
+        Assert.Equal((155m, 115m), (dashboard.Totals.Expense, dashboard.Totals.PaidExpense));
+        Assert.Equal(-155m, dashboard.Totals.Result);
+        Assert.Equal(155m, dashboard.MonthlyHistory.Single(m => m.Month == "2026-11").Expense);
         await ReadProblemAsync(await ana.Get($"/api/v1/transactions/{entry.Id}"), HttpStatusCode.NotFound, "not_found");
     }
 }

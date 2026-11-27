@@ -4,12 +4,37 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinanceApp.Application.Transactions;
 
+/// <summary>Pagamento feito pelo usuário em movimentação de grupo (não cancelada), já com principal + juros.</summary>
+internal sealed class MyGroupPayment
+{
+    public DateOnly PaymentDate { get; init; }
+
+    public decimal Total { get; init; }
+
+    public TransactionType Type { get; init; }
+
+    public Guid RootCategoryId { get; init; }
+}
+
 /// <summary>
-/// Pagamentos de grupo feitos pelo usuário com uma conta própria (D-033), para exibição na listagem individual (D-060).
-/// Apenas leitura: não são movimentações individuais e não entram em totais do dashboard/relatórios.
+/// Pagamentos de grupo feitos pelo usuário (D-060): exibidos na listagem individual (somente leitura) e somados ao que ele
+/// efetivamente pagou no dashboard. Não são movimentações individuais; o saldo projetado continua só com pagamentos feitos
+/// com conta própria (D-033).
 /// </summary>
 internal sealed class GroupPaymentEntries(IAppDbContext db)
 {
+    public static IQueryable<MyGroupPayment> Mine(IAppDbContext db, Guid userId) =>
+        from p in db.TransactionPayments.AsNoTracking()
+        join t in db.Transactions.AsNoTracking() on p.TransactionId equals t.Id
+        where p.CreatedByUserId == userId && t.GroupId != null && t.Status != TransactionStatus.Canceled
+        select new MyGroupPayment
+        {
+            PaymentDate = p.PaymentDate,
+            Total = p.Amount + p.InterestAmount,
+            Type = t.Type,
+            RootCategoryId = t.Category!.ParentCategoryId ?? t.CategoryId,
+        };
+
     /// <summary>Filtros sem equivalente em pagamentos de grupo (vencimento, cartão, parcelamento, recorrência) os excluem.</summary>
     public static bool AppliesTo(TransactionListQuery q) =>
         q.DueFrom is null && q.DueTo is null && q.CreditCardId is null && q.InstallmentPlanId is null && q.RecurrenceRuleId is null
@@ -25,7 +50,7 @@ internal sealed class GroupPaymentEntries(IAppDbContext db)
         var rows = from p in db.TransactionPayments.AsNoTracking()
                    join t in db.Transactions.AsNoTracking() on p.TransactionId equals t.Id
                    join g in db.Groups.AsNoTracking() on t.GroupId equals g.Id
-                   where p.CreatedByUserId == userId && p.AccountId != null && t.GroupId != null && t.Status != TransactionStatus.Canceled
+                   where p.CreatedByUserId == userId && t.GroupId != null && t.Status != TransactionStatus.Canceled
                    select new { p, t, GroupName = g.Name };
 
         if (q.From is { } from)
