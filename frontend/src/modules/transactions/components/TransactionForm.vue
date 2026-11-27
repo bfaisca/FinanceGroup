@@ -27,7 +27,7 @@ import { enumOptions, STATUS_PRESENTATION, TRANSACTION_TYPE_LABELS } from '@/uti
 import {
   buildCreateRequest,
   buildRecurrenceRequest,
-  canBeReceived,
+  canBeSettled,
   isRepeatable,
   buildUpdateRequest,
   NOTES_MAX,
@@ -169,7 +169,7 @@ function onTypeChange(value: TransactionType | null): void {
   }
 }
 
-/** Ao marcar "Já recebida", sugere a data da movimentação (limitada a hoje). */
+/** Ao marcar "Já recebida/paga", sugere a data da movimentação (limitada a hoje). */
 function onReceivedToggle(value: boolean): void {
   clear('paymentDate')
   if (value && !form.receivedDate) {
@@ -370,7 +370,7 @@ function onSubmit(): void {
       />
     </FormField>
 
-    <div v-if="canBeReceived(form, isEdit) && !form.repeatMonthly" class="tx-form__repeat">
+    <div v-if="canBeSettled(form, isEdit) && !form.repeatMonthly" class="tx-form__repeat">
       <Checkbox
         v-model="form.received"
         input-id="tx-received"
@@ -379,17 +379,18 @@ function onSubmit(): void {
         @update:model-value="onReceivedToggle"
       />
       <label for="tx-received">
-        Já recebida
+        {{ form.type === 'Income' ? 'Já recebida' : 'Já paga' }}
         <small class="tx-form__repeat-hint">
-          Para lançamentos retroativos: a receita já nasce como recebida, sem precisar registrar o recebimento depois.
+          Para lançamentos retroativos: a movimentação já nasce {{ form.type === 'Income' ? 'recebida' : 'paga' }}, sem
+          precisar registrar o pagamento depois.
         </small>
       </label>
     </div>
     <FormField
-      v-if="canBeReceived(form, isEdit) && form.received"
+      v-if="canBeSettled(form, isEdit) && form.received"
       id="tx-received-date"
       v-slot="{ id, describedBy, invalid }"
-      label="Data do recebimento"
+      :label="form.type === 'Income' ? 'Data do recebimento' : 'Data do pagamento'"
       :error="errors.paymentDate"
       required
     >

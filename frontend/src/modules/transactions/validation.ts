@@ -32,7 +32,7 @@ export interface TransactionFormValues {
   notes: string
   /** Só receitas novas: repetir todo mês (cria uma recorrência mensal em vez de um lançamento único). */
   repeatMonthly: boolean
-  /** Só receitas novas (D-059): já foi recebida — registra o recebimento na criação (lançamento retroativo). */
+  /** Só movimentações novas (D-059): já foi recebida/paga — registra o pagamento na criação (lançamento retroativo). */
   received: boolean
   receivedDate: DateOnlyString | null
 }
@@ -96,12 +96,12 @@ export function validateTransactionForm(
     }
   }
 
-  if (values.received) {
-    if (!values.receivedDate || !parseDateOnly(values.receivedDate))
-      errors.paymentDate = 'Informe a data do recebimento.'
+  if (values.received && !usesCard(values)) {
+    const noun = values.type === 'Income' ? 'recebimento' : 'pagamento'
+    if (!values.receivedDate || !parseDateOnly(values.receivedDate)) errors.paymentDate = `Informe a data do ${noun}.`
     else if (options.today && values.receivedDate > options.today) errors.paymentDate = 'A data não pode ser futura.'
     else if (values.transactionDate && values.receivedDate < values.transactionDate) {
-      errors.paymentDate = 'A data do recebimento não pode ser anterior à data da movimentação.'
+      errors.paymentDate = `A data do ${noun} não pode ser anterior à data da movimentação.`
     }
   }
 
@@ -142,7 +142,7 @@ export function buildCreateRequest(values: TransactionFormValues): CreateTransac
     type: values.type,
     status: values.status ?? 'Pending',
   }
-  if (values.received && values.receivedDate) request.paymentDate = values.receivedDate
+  if (values.received && values.receivedDate && !usesCard(values)) request.paymentDate = values.receivedDate
   return request
 }
 
@@ -165,9 +165,9 @@ export function buildRecurrenceRequest(values: TransactionFormValues): CreateRec
 }
 
 /** Receitas não têm vencimento nem situação inicial no formulário (sempre "Pendente"/a receber, sem vencimento). */
-/** D-059: receita nova pode nascer já recebida. */
-export function canBeReceived(values: Pick<TransactionFormValues, 'type'>, isEdit: boolean): boolean {
-  return !isEdit && values.type === 'Income'
+/** D-059: receita nova pode nascer já recebida e despesa nova já paga (exceto compras no cartão, pagas pela fatura). */
+export function canBeSettled(values: Pick<TransactionFormValues, 'type' | 'payWith'>, isEdit: boolean): boolean {
+  return !isEdit && !usesCard(values)
 }
 
 export function isRepeatable(values: Pick<TransactionFormValues, 'type'>, isEdit: boolean): boolean {

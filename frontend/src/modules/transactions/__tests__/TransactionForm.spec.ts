@@ -245,9 +245,17 @@ describe('TransactionForm — receitas (sem vencimento/situação, com "Repetir 
     wrapper.unmount()
   })
 
-  it('despesa não oferece "Já recebida"', () => {
+  it('despesa oferece "Já paga" e envia paymentDate; com cartão a opção some', async () => {
     const { wrapper } = setup()
-    expect(wrapper.find('#tx-received').exists()).toBe(false)
+    expect(wrapper.find('label[for="tx-received"]').text()).toContain('Já paga')
+    await fillValid(wrapper)
+    await wrapper.find('#tx-received').setValue(true)
+    await flushPromises()
+    expect(wrapper.find('label[for="tx-received-date"]').text()).toContain('Data do pagamento')
+
+    await wrapper.find('form').trigger('submit')
+    const request = wrapper.emitted('submit')![0]![0] as Record<string, unknown>
+    expect(request).toMatchObject({ type: 'Expense', paymentDate: '2026-11-18' })
     wrapper.unmount()
   })
 })
