@@ -27,6 +27,7 @@ import { enumOptions, STATUS_PRESENTATION, TRANSACTION_TYPE_LABELS } from '@/uti
 import {
   buildCreateRequest,
   buildRecurrenceRequest,
+  canBeReceived,
   isRepeatable,
   buildUpdateRequest,
   NOTES_MAX,
@@ -87,6 +88,8 @@ function initialValues(): TransactionFormValues {
       dueDate: tx.dueDate,
       notes: tx.notes ?? '',
       repeatMonthly: false,
+      received: false,
+      receivedDate: null,
     }
   }
   return {
@@ -103,6 +106,8 @@ function initialValues(): TransactionFormValues {
     dueDate: null,
     notes: '',
     repeatMonthly: false,
+    received: false,
+    receivedDate: null,
   }
 }
 
@@ -144,7 +149,10 @@ const minAmountCents = computed(() => toCents(props.transaction?.paidAmount ?? 0
 function onTypeChange(value: TransactionType | null): void {
   if (!value || value === form.type) return
   form.type = value
-  if (value !== 'Income') form.repeatMonthly = false
+  if (value !== 'Income') {
+    form.repeatMonthly = false
+    form.received = false
+  }
   // A categoria precisa ser do mesmo tipo da movimentação.
   form.categoryId = null
   clear('categoryId')
@@ -161,8 +169,17 @@ function onTypeChange(value: TransactionType | null): void {
   }
 }
 
+/** Ao marcar "Já recebida", sugere a data da movimentação (limitada a hoje). */
+function onReceivedToggle(value: boolean): void {
+  clear('paymentDate')
+  if (value && !form.receivedDate) {
+    const date = form.transactionDate ?? props.today
+    form.receivedDate = date > props.today ? props.today : date
+  }
+}
+
 function onSubmit(): void {
-  const valid = setLocal(validateTransactionForm(form, { minAmountCents: minAmountCents.value }))
+  const valid = setLocal(validateTransactionForm(form, { minAmountCents: minAmountCents.value, today: props.today }))
   if (!valid) return
   if (isRepeatable(form, isEdit.value) && form.repeatMonthly) {
     emit('submit-recurring', buildRecurrenceRequest(form))
@@ -353,7 +370,41 @@ function onSubmit(): void {
       />
     </FormField>
 
-    <div v-if="isRepeatable(form, isEdit)" class="tx-form__repeat">
+    <div v-if="canBeReceived(form, isEdit) && !form.repeatMonthly" class="tx-form__repeat">
+      <Checkbox
+        v-model="form.received"
+        input-id="tx-received"
+        binary
+        name="received"
+        @update:model-value="onReceivedToggle"
+      />
+      <label for="tx-received">
+        Já recebida
+        <small class="tx-form__repeat-hint">
+          Para lançamentos retroativos: a receita já nasce como recebida, sem precisar registrar o recebimento depois.
+        </small>
+      </label>
+    </div>
+    <FormField
+      v-if="canBeReceived(form, isEdit) && form.received"
+      id="tx-received-date"
+      v-slot="{ id, describedBy, invalid }"
+      label="Data do recebimento"
+      :error="errors.paymentDate"
+      required
+    >
+      <DateInput
+        :id="id"
+        v-model="form.receivedDate"
+        :described-by="describedBy"
+        :invalid="invalid"
+        :min="form.transactionDate"
+        :max="today"
+        @update:model-value="clear('paymentDate')"
+      />
+    </FormField>
+
+    <div v-if="isRepeatable(form, isEdit) && !form.received" class="tx-form__repeat">
       <Checkbox v-model="form.repeatMonthly" input-id="tx-repeat" binary name="repeatMonthly" />
       <label for="tx-repeat">
         Repetir todo mês

@@ -112,6 +112,12 @@ public sealed class CreateTransactionRequest
     public DateOnly? DueDate { get; init; }
 
     public string? Notes { get; init; }
+
+    /// <summary>
+    /// Lançamento retroativo (D-059): quando informada, a movimentação já nasce quitada — registra um pagamento/recebimento do
+    /// valor total nesta data (não futura). Não vale para compras no cartão nem para <c>status = Planned</c>.
+    /// </summary>
+    public DateOnly? PaymentDate { get; init; }
 }
 
 /// <summary>Mesmos campos da criação, exceto <c>type</c> (imutável). <c>status</c> é opcional (Planned/Pending).</summary>

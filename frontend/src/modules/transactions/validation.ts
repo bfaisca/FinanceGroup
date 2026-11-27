@@ -32,6 +32,9 @@ export interface TransactionFormValues {
   notes: string
   /** Só receitas novas: repetir todo mês (cria uma recorrência mensal em vez de um lançamento único). */
   repeatMonthly: boolean
+  /** Só receitas novas (D-059): já foi recebida — registra o recebimento na criação (lançamento retroativo). */
+  received: boolean
+  receivedDate: DateOnlyString | null
 }
 
 export const TRANSACTION_FORM_FIELDS = [
@@ -44,6 +47,7 @@ export const TRANSACTION_FORM_FIELDS = [
   'status',
   'transactionDate',
   'dueDate',
+  'paymentDate',
   'notes',
 ] as const
 
@@ -55,7 +59,7 @@ export type TransactionFormField = (typeof TRANSACTION_FORM_FIELDS)[number]
  */
 export function validateTransactionForm(
   values: TransactionFormValues,
-  options: { minAmountCents?: number } = {},
+  options: { minAmountCents?: number; today?: DateOnlyString } = {},
 ): Partial<Record<TransactionFormField, string>> {
   const errors: Partial<Record<TransactionFormField, string>> = {}
 
@@ -92,6 +96,15 @@ export function validateTransactionForm(
     }
   }
 
+  if (values.received) {
+    if (!values.receivedDate || !parseDateOnly(values.receivedDate))
+      errors.paymentDate = 'Informe a data do recebimento.'
+    else if (options.today && values.receivedDate > options.today) errors.paymentDate = 'A data não pode ser futura.'
+    else if (values.transactionDate && values.receivedDate < values.transactionDate) {
+      errors.paymentDate = 'A data do recebimento não pode ser anterior à data da movimentação.'
+    }
+  }
+
   if (values.notes.length > NOTES_MAX) errors.notes = `As observações devem ter até ${NOTES_MAX} caracteres.`
 
   return errors
@@ -124,7 +137,13 @@ function sharedFields(values: TransactionFormValues) {
 }
 
 export function buildCreateRequest(values: TransactionFormValues): CreateTransactionRequest {
-  return { ...sharedFields(values), type: values.type, status: values.status ?? 'Pending' }
+  const request: CreateTransactionRequest = {
+    ...sharedFields(values),
+    type: values.type,
+    status: values.status ?? 'Pending',
+  }
+  if (values.received && values.receivedDate) request.paymentDate = values.receivedDate
+  return request
 }
 
 /** Receita fixa: recorrência mensal a partir da data informada, sem data final (pode ser encerrada depois). */
@@ -146,6 +165,11 @@ export function buildRecurrenceRequest(values: TransactionFormValues): CreateRec
 }
 
 /** Receitas não têm vencimento nem situação inicial no formulário (sempre "Pendente"/a receber, sem vencimento). */
+/** D-059: receita nova pode nascer já recebida. */
+export function canBeReceived(values: Pick<TransactionFormValues, 'type'>, isEdit: boolean): boolean {
+  return !isEdit && values.type === 'Income'
+}
+
 export function isRepeatable(values: Pick<TransactionFormValues, 'type'>, isEdit: boolean): boolean {
   return !isEdit && values.type === 'Income'
 }

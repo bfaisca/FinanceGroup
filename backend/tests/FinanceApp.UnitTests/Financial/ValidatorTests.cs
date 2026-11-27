@@ -10,13 +10,17 @@ namespace FinanceApp.UnitTests.Financial;
 public class FinancialValidatorTests
 {
     private readonly FakeClock clock = CreateClock();
-    private readonly CreateTransactionRequestValidator create = new();
+    private readonly CreateTransactionRequestValidator create;
     private readonly UpdateTransactionRequestValidator update = new();
     private readonly AddPaymentRequestValidator payment;
     private readonly TransactionListQueryValidator list = new();
     private readonly DashboardQueryValidator dashboard = new();
 
-    public FinancialValidatorTests() => payment = new AddPaymentRequestValidator(clock);
+    public FinancialValidatorTests()
+    {
+        create = new CreateTransactionRequestValidator(clock);
+        payment = new AddPaymentRequestValidator(clock);
+    }
 
     private static FakeClock CreateClock()
     {

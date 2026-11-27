@@ -225,4 +225,29 @@ describe('TransactionForm — receitas (sem vencimento/situação, com "Repetir 
     expect(wrapper.find('#tx-repeat').exists()).toBe(false)
     wrapper.unmount()
   })
+
+  it('"Já recebida" pede a data do recebimento e envia paymentDate no lançamento', async () => {
+    const { wrapper } = setup()
+    await pickIncome(wrapper)
+    await wrapper.find('#tx-description').setValue('Salário de outubro')
+    await wrapper.find('#tx-amount').setValue('5000')
+    wrapper.findAllComponents(Select)[0]!.vm.$emit('update:modelValue', 'c-salario')
+    await wrapper.find('#tx-received').setValue(true)
+    await flushPromises()
+
+    expect(wrapper.find('#tx-received-date').exists()).toBe(true)
+    // "Repetir todo mês" some enquanto a receita está marcada como recebida.
+    expect(wrapper.find('#tx-repeat').exists()).toBe(false)
+
+    await wrapper.find('form').trigger('submit')
+    const request = wrapper.emitted('submit')![0]![0] as Record<string, unknown>
+    expect(request).toMatchObject({ type: 'Income', amount: 5000, paymentDate: '2026-11-18' })
+    wrapper.unmount()
+  })
+
+  it('despesa não oferece "Já recebida"', () => {
+    const { wrapper } = setup()
+    expect(wrapper.find('#tx-received').exists()).toBe(false)
+    wrapper.unmount()
+  })
 })

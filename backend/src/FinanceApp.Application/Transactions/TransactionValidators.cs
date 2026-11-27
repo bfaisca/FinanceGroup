@@ -42,8 +42,16 @@ internal static class TransactionRules
 
 public sealed class CreateTransactionRequestValidator : AbstractValidator<CreateTransactionRequest>
 {
-    public CreateTransactionRequestValidator()
+    public CreateTransactionRequestValidator(IDateTimeProvider clock)
     {
+        RuleFor(x => x.PaymentDate)
+            .Must(d => d is null || d.Value <= clock.Today).WithMessage("A data do pagamento não pode ser futura.")
+            .Must((x, d) => d is null || x.TransactionDate is null || d.Value >= x.TransactionDate.Value)
+            .WithMessage("A data do pagamento não pode ser anterior à data da movimentação.")
+            .Must((x, d) => d is null || x.CreditCardId is null)
+            .WithMessage("Compras no cartão são pagas pela fatura; não informe a data do pagamento.")
+            .Must((x, d) => d is null || x.Status != TransactionStatus.Planned)
+            .WithMessage("Uma movimentação prevista não pode nascer quitada.");
         RuleFor(x => x.Description).TransactionDescription();
         RuleFor(x => x.Type)
             .Cascade(CascadeMode.Stop)

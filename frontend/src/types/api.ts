@@ -299,6 +299,8 @@ export interface CreateTransactionRequest {
   notes?: string | null
   /** §10: só em despesas; com cartão, `accountId` e `dueDate` não são enviados. Imutável após criar. */
   creditCardId?: Uuid | null
+  /** D-059: lançamento retroativo — já nasce quitado com um pagamento/recebimento total nesta data (não futura). */
+  paymentDate?: DateOnlyString | null
 }
 
 /** Mesmos campos da criação, exceto `type` (imutável); `status` opcional (Planned | Pending). */

@@ -74,6 +74,14 @@ public sealed class TransactionService(
             card);
 
         db.Transactions.Add(transaction);
+        if (request.PaymentDate is { } paymentDate)
+        {
+            // Lançamento retroativo (D-059): pagamento/recebimento integral, na mesma gravação da movimentação.
+            var payment = transaction.AddPayment(
+                userId, request.Amount, paymentDate, clock.Today, account, request.PaymentMethod, clock.UtcNow);
+            db.TransactionPayments.Add(payment);
+        }
+
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return await GetDetailAsync(transaction.Id, cancellationToken).ConfigureAwait(false);
     }
