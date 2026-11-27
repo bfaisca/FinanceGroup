@@ -23,6 +23,7 @@ function values(partial: Partial<TransactionFormValues> = {}): TransactionFormVa
     transactionDate: '2026-11-18',
     dueDate: null,
     notes: '',
+    repeatMonthly: false,
     ...partial,
   }
 }

@@ -313,3 +313,8 @@ Pedido: dar baixa em todas as compras de uma fatura de uma vez, em vez de uma po
 - **Data** do pagamento: padrão hoje, nunca futura. **Sem conta** no pagamento (mesmo comportamento de compras de cartão sem conta, D-025), então não altera o saldo projetado além do que D-025 já define.
 - **Escopo:** apenas compras individuais (`GroupId` nulo) do próprio usuário.
 - **Em aberto para o usuário:** pagamento parcial da fatura (valor menor que o total) e escolha da conta que pagou ficam fora até decisão explícita.
+
+## D-058 — Receitas: sem vencimento/situação no formulário; "Repetir todo mês" — Aceita (pedido do usuário)
+- No formulário, **receitas não têm vencimento nem situação**: ficam sem vencimento e `Pending` (a receber) ao criar; em edição os valores existentes são preservados. Despesas continuam iguais.
+- **"Repetir todo mês"** (só ao criar receita): em vez de um lançamento único, cria uma **recorrência mensal** (D-027) com `startDate` = data da movimentação e sem data final; sem mudança no backend.
+- **Encerrar repetição:** na movimentação gerada por uma recorrência, a ação "Encerrar repetição" define `endDate` = dia anterior àquela movimentação (ou desativa a regra, se for a primeira ocorrência). Pela regra de D-027, ocorrências **futuras** sem pagamento e nunca editadas à mão são removidas; as já lançadas até hoje e as com pagamento permanecem (podem ser canceladas individualmente).

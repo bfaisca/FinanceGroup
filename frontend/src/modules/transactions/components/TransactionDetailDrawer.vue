@@ -15,7 +15,8 @@ import CategoryBadge from '@/components/CategoryBadge.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import { useRestoreFocus } from '@/composables/useRestoreFocus'
 import type { TransactionDetailDto, TransactionPaymentDto } from '@/types/api'
-import { formatCurrency, formatDate } from '@/utils/format'
+import { formatCurrency, formatDate, parseDateOnly, toDateOnly } from '@/utils/format'
+import { recurrenceService } from '@/modules/recurrence/services/recurrenceService'
 import { PAYMENT_METHOD_LABELS, paymentActionLabel, TRANSACTION_TYPE_LABELS } from '@/utils/labels'
 import { toAppError } from '@/utils/problem'
 import { availableActions, paidPercentage } from '../actions'
@@ -28,7 +29,10 @@ import TransactionOriginBadges from './TransactionOriginBadges.vue'
 import TransactionStatusChip from './TransactionStatusChip.vue'
 
 type PendingConfirm =
-  { kind: 'cancel' } | { kind: 'delete' } | { kind: 'removePayment'; payment: TransactionPaymentDto }
+  | { kind: 'cancel' }
+  | { kind: 'delete' }
+  | { kind: 'endRecurrence' }
+  | { kind: 'removePayment'; payment: TransactionPaymentDto }
 
 const props = withDefaults(defineProps<{ transactionId: string | null; refreshToken?: number }>(), {
   refreshToken: 0,
@@ -92,6 +96,12 @@ const confirmCopy = computed(() => {
           'A movimentação deixará de contar nos totais e no saldo projetado. Os pagamentos já registrados são preservados e você poderá reabri-la depois.',
         label: 'Cancelar movimentação',
       }
+    case 'endRecurrence':
+      return {
+        header: 'Encerrar repetição',
+        message: `A partir de ${formatDate(detail.value?.transactionDate)} nenhum novo lançamento será gerado e os futuros ainda sem pagamento serão removidos. O que já foi lançado até hoje, e tudo que tem pagamento, permanece.`,
+        label: 'Encerrar repetição',
+      }
     case 'delete':
       return {
         header: 'Excluir movimentação',
@@ -125,6 +135,12 @@ async function runConfirmed(): Promise<void> {
     if (current.kind === 'cancel') {
       state.apply(await transactionService.cancel(tx.id))
       toast.add({ severity: 'success', summary: 'Movimentação cancelada', life: 3500 })
+    } else if (current.kind === 'endRecurrence') {
+      await endRecurrence(tx)
+      confirmVisible.value = false
+      visible.value = false
+      emit('changed')
+      return
     } else if (current.kind === 'removePayment') {
       state.apply(await transactionService.removePayment(tx.id, current.payment.id))
       toast.add({ severity: 'success', summary: 'Pagamento removido', life: 3500 })
@@ -146,6 +162,42 @@ async function runConfirmed(): Promise<void> {
   } finally {
     busy.value = false
   }
+}
+
+/** Encerra a regra no dia anterior a esta movimentação (ou a desativa, se for a primeira ocorrência). */
+async function endRecurrence(tx: TransactionDetailDto): Promise<void> {
+  const ruleId = tx.recurrenceRuleId
+  if (!ruleId) return
+  const rule = await recurrenceService.get(ruleId)
+  if (!rule.isActive) {
+    toast.add({ severity: 'info', summary: 'A repetição já estava encerrada', life: 4000 })
+    return
+  }
+  const day = parseDateOnly(tx.transactionDate)
+  if (!day) return
+  if (tx.transactionDate <= rule.startDate) {
+    await recurrenceService.deactivate(ruleId)
+  } else {
+    day.setDate(day.getDate() - 1)
+    await recurrenceService.update(ruleId, {
+      description: rule.description,
+      amount: rule.amount,
+      categoryId: rule.categoryId,
+      accountId: rule.accountId,
+      creditCardId: rule.creditCardId,
+      paymentMethod: rule.paymentMethod,
+      notes: rule.notes,
+      frequency: rule.frequency,
+      interval: rule.interval,
+      endDate: toDateOnly(day),
+    })
+  }
+  toast.add({
+    severity: 'success',
+    summary: 'Repetição encerrada',
+    detail: `Sem novos lançamentos a partir de ${formatDate(tx.transactionDate)}.`,
+    life: 4500,
+  })
 }
 
 async function reopen(): Promise<void> {
@@ -391,6 +443,16 @@ const confirmSeverity = computed(() => (pending.value?.kind === 'removePayment' 
                   outlined
                   :disabled="busy"
                   @click="ask({ kind: 'cancel' })"
+                />
+                <Button
+                  v-if="detail.recurrenceRuleId"
+                  type="button"
+                  label="Encerrar repetição"
+                  icon="pi pi-stop-circle"
+                  severity="secondary"
+                  outlined
+                  :disabled="busy"
+                  @click="ask({ kind: 'endRecurrence' })"
                 />
                 <Button
                   v-if="actions.canDelete"

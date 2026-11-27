@@ -1,5 +1,6 @@
 import type {
   CreatePaymentRequest,
+  CreateRecurrenceRequest,
   CreateTransactionRequest,
   DateOnlyString,
   PaymentMethod,
@@ -29,6 +30,8 @@ export interface TransactionFormValues {
   transactionDate: DateOnlyString | null
   dueDate: DateOnlyString | null
   notes: string
+  /** Só receitas novas: repetir todo mês (cria uma recorrência mensal em vez de um lançamento único). */
+  repeatMonthly: boolean
 }
 
 export const TRANSACTION_FORM_FIELDS = [
@@ -122,6 +125,29 @@ function sharedFields(values: TransactionFormValues) {
 
 export function buildCreateRequest(values: TransactionFormValues): CreateTransactionRequest {
   return { ...sharedFields(values), type: values.type, status: values.status ?? 'Pending' }
+}
+
+/** Receita fixa: recorrência mensal a partir da data informada, sem data final (pode ser encerrada depois). */
+export function buildRecurrenceRequest(values: TransactionFormValues): CreateRecurrenceRequest {
+  const shared = sharedFields(values)
+  return {
+    description: shared.description,
+    type: values.type,
+    amount: shared.amount,
+    categoryId: shared.categoryId,
+    accountId: values.accountId,
+    paymentMethod: values.paymentMethod,
+    notes: shared.notes,
+    frequency: 'Monthly',
+    interval: 1,
+    startDate: shared.transactionDate,
+    endDate: null,
+  }
+}
+
+/** Receitas não têm vencimento nem situação inicial no formulário (sempre "Pendente"/a receber, sem vencimento). */
+export function isRepeatable(values: Pick<TransactionFormValues, 'type'>, isEdit: boolean): boolean {
+  return !isEdit && values.type === 'Income'
 }
 
 /** `type` é imutável: não é enviado. `status` só vai se o usuário escolheu um. */

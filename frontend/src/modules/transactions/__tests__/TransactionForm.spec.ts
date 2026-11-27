@@ -156,3 +156,73 @@ describe('TransactionForm (edição)', () => {
     without.wrapper.unmount()
   })
 })
+
+describe('TransactionForm — receitas (sem vencimento/situação, com "Repetir todo mês")', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  async function pickIncome(wrapper: ReturnType<typeof setup>['wrapper']) {
+    const incomeButton = wrapper.findAll('[role="radio"], button').find((b) => b.text() === 'Receita')!
+    await incomeButton.trigger('click')
+    await flushPromises()
+  }
+
+  it('despesa mostra vencimento e situação; receita não', async () => {
+    const { wrapper } = setup()
+    expect(wrapper.find('#tx-due').exists()).toBe(true)
+    expect(wrapper.find('#tx-status').exists()).toBe(true)
+    expect(wrapper.find('#tx-repeat').exists()).toBe(false)
+
+    await pickIncome(wrapper)
+    expect(wrapper.find('#tx-due').exists()).toBe(false)
+    expect(wrapper.find('#tx-status').exists()).toBe(false)
+    expect(wrapper.find('#tx-repeat').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('receita sem a flag emite um lançamento único, sem vencimento e Pendente', async () => {
+    const { wrapper } = setup()
+    await pickIncome(wrapper)
+    await wrapper.find('#tx-description').setValue('Salário')
+    await wrapper.find('#tx-amount').setValue('5000')
+    wrapper.findAllComponents(Select)[0]!.vm.$emit('update:modelValue', 'c-salario')
+    await flushPromises()
+    await wrapper.find('form').trigger('submit')
+
+    const request = wrapper.emitted('submit')![0]![0] as Record<string, unknown>
+    expect(request).toMatchObject({ type: 'Income', amount: 5000, status: 'Pending', dueDate: null })
+    expect(wrapper.emitted('submit-recurring')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('receita com "Repetir todo mês" emite uma recorrência mensal sem data final', async () => {
+    const { wrapper } = setup()
+    await pickIncome(wrapper)
+    await wrapper.find('#tx-description').setValue('Salário')
+    await wrapper.find('#tx-amount').setValue('5000')
+    wrapper.findAllComponents(Select)[0]!.vm.$emit('update:modelValue', 'c-salario')
+    await wrapper.find('#tx-repeat').setValue(true)
+    await flushPromises()
+    await wrapper.find('form').trigger('submit')
+
+    expect(wrapper.emitted('submit')).toBeUndefined()
+    expect(wrapper.emitted('submit-recurring')![0]![0]).toMatchObject({
+      description: 'Salário',
+      type: 'Income',
+      amount: 5000,
+      categoryId: 'c-salario',
+      frequency: 'Monthly',
+      interval: 1,
+      startDate: '2026-11-18',
+      endDate: null,
+    })
+    wrapper.unmount()
+  })
+
+  it('na edição não oferece "Repetir todo mês"', () => {
+    const { wrapper } = setup({ transaction: makeDetail({ type: 'Income', categoryId: 'c-salario' }) })
+    expect(wrapper.find('#tx-repeat').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})

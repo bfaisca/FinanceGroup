@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
@@ -14,6 +15,7 @@ import { useFormErrors } from '@/composables/useFormErrors'
 import { buildCategoryOptions } from '@/modules/categories/tree'
 import { useCategoriesStore } from '@/stores/categories'
 import type {
+  CreateRecurrenceRequest,
   CreateTransactionRequest,
   TransactionDetailDto,
   TransactionInitialStatus,
@@ -24,6 +26,8 @@ import { formatMoneyInput, toCents } from '@/utils/money'
 import { enumOptions, STATUS_PRESENTATION, TRANSACTION_TYPE_LABELS } from '@/utils/labels'
 import {
   buildCreateRequest,
+  buildRecurrenceRequest,
+  isRepeatable,
   buildUpdateRequest,
   NOTES_MAX,
   TRANSACTION_FORM_FIELDS,
@@ -56,6 +60,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   submit: [request: CreateTransactionRequest | UpdateTransactionRequest]
+  /** Receita nova com "Repetir todo mês" marcado. */
+  'submit-recurring': [request: CreateRecurrenceRequest]
   cancel: []
 }>()
 
@@ -80,6 +86,7 @@ function initialValues(): TransactionFormValues {
       transactionDate: tx.transactionDate,
       dueDate: tx.dueDate,
       notes: tx.notes ?? '',
+      repeatMonthly: false,
     }
   }
   return {
@@ -95,6 +102,7 @@ function initialValues(): TransactionFormValues {
     transactionDate: props.today,
     dueDate: null,
     notes: '',
+    repeatMonthly: false,
   }
 }
 
@@ -136,6 +144,7 @@ const minAmountCents = computed(() => toCents(props.transaction?.paidAmount ?? 0
 function onTypeChange(value: TransactionType | null): void {
   if (!value || value === form.type) return
   form.type = value
+  if (value !== 'Income') form.repeatMonthly = false
   // A categoria precisa ser do mesmo tipo da movimentação.
   form.categoryId = null
   clear('categoryId')
@@ -144,12 +153,21 @@ function onTypeChange(value: TransactionType | null): void {
     form.payWith = 'account'
     form.creditCardId = null
     if (form.paymentMethod === 'CreditCard') form.paymentMethod = null
+    // Receitas não têm situação inicial nem vencimento no formulário.
+    if (!isEdit.value) {
+      form.status = 'Pending'
+      form.dueDate = null
+    }
   }
 }
 
 function onSubmit(): void {
   const valid = setLocal(validateTransactionForm(form, { minAmountCents: minAmountCents.value }))
   if (!valid) return
+  if (isRepeatable(form, isEdit.value) && form.repeatMonthly) {
+    emit('submit-recurring', buildRecurrenceRequest(form))
+    return
+  }
   emit('submit', isEdit.value ? buildUpdateRequest(form) : buildCreateRequest(form))
 }
 </script>
@@ -274,7 +292,7 @@ function onSubmit(): void {
         />
       </FormField>
       <FormField
-        v-if="!withCard"
+        v-if="!withCard && form.type === 'Expense'"
         id="tx-due"
         v-slot="{ id, describedBy, invalid }"
         label="Vencimento"
@@ -315,7 +333,7 @@ function onSubmit(): void {
     />
 
     <FormField
-      v-if="canEditStatus"
+      v-if="canEditStatus && form.type === 'Expense'"
       id="tx-status"
       v-slot="{ id, describedBy, invalid }"
       label="Situação"
@@ -334,6 +352,17 @@ function onSubmit(): void {
         @update:model-value="clear('status')"
       />
     </FormField>
+
+    <div v-if="isRepeatable(form, isEdit)" class="tx-form__repeat">
+      <Checkbox v-model="form.repeatMonthly" input-id="tx-repeat" binary name="repeatMonthly" />
+      <label for="tx-repeat">
+        Repetir todo mês
+        <small class="tx-form__repeat-hint">
+          Para valores fixos (ex.: salário): lança automaticamente todo mês a partir da data acima. Depois você pode
+          abrir a movimentação e encerrar a repetição a partir de uma data.
+        </small>
+      </label>
+    </div>
 
     <FormField
       id="tx-notes"
@@ -369,6 +398,18 @@ function onSubmit(): void {
 </template>
 
 <style scoped>
+.tx-form__repeat {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+}
+
+.tx-form__repeat-hint {
+  display: block;
+  margin-top: 0.125rem;
+  color: var(--gf-text-muted);
+}
+
 .tx-form__type {
   margin: 0;
   padding: 0;

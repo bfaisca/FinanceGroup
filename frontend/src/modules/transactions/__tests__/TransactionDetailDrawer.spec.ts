@@ -3,7 +3,7 @@ import MockAdapter from 'axios-mock-adapter'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { http } from '@/services/http'
-import { makeDetail } from '@/test/fixtures'
+import { makeDetail, makeRecurrence } from '@/test/fixtures'
 import { mountWithPlugins } from '@/test/mount'
 import TransactionDetailDrawer from '../components/TransactionDetailDrawer.vue'
 
@@ -78,6 +78,49 @@ describe('TransactionDetailDrawer', () => {
     expect(mock.history.post.map((r) => r.url)).toEqual(['/transactions/t1/cancel'])
     expect(wrapper.emitted('changed')).toHaveLength(1)
     expect(button('Reabrir')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('"Encerrar repetição" fecha a regra no dia anterior à movimentação, sem criar nada novo', async () => {
+    mock
+      .onGet('/transactions/t1')
+      .reply(200, makeDetail({ type: 'Income', recurrenceRuleId: 'r1', transactionDate: '2026-12-05' }))
+    mock.onGet('/recurrences/r1').reply(200, makeRecurrence({ id: 'r1', startDate: '2026-10-05', isActive: true }))
+    mock.onPut('/recurrences/r1').reply(200, makeRecurrence({ id: 'r1' }))
+    const wrapper = await open()
+
+    button('Encerrar repetição')!.click()
+    await flushPromises()
+    expect(document.body.textContent).toContain('nenhum novo lançamento será gerado')
+    expect(mock.history.put).toHaveLength(0)
+
+    document.body.querySelector<HTMLButtonElement>('.confirm-dialog button[type="submit"]')!.click()
+    await flushPromises()
+
+    expect(JSON.parse(mock.history.put[0]!.data)).toMatchObject({ endDate: '2026-12-04' })
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('"Encerrar repetição" na primeira ocorrência desativa a regra', async () => {
+    mock.onGet('/transactions/t1').reply(200, makeDetail({ recurrenceRuleId: 'r1', transactionDate: '2026-10-05' }))
+    mock.onGet('/recurrences/r1').reply(200, makeRecurrence({ id: 'r1', startDate: '2026-10-05', isActive: true }))
+    mock.onPost('/recurrences/r1/deactivate').reply(200, makeRecurrence({ id: 'r1', isActive: false }))
+    const wrapper = await open()
+
+    button('Encerrar repetição')!.click()
+    await flushPromises()
+    document.body.querySelector<HTMLButtonElement>('.confirm-dialog button[type="submit"]')!.click()
+    await flushPromises()
+
+    expect(mock.history.post.map((r) => r.url)).toEqual(['/recurrences/r1/deactivate'])
+    wrapper.unmount()
+  })
+
+  it('não mostra "Encerrar repetição" em movimentação sem recorrência', async () => {
+    mock.onGet('/transactions/t1').reply(200, makeDetail())
+    const wrapper = await open()
+    expect(button('Encerrar repetição')).toBeUndefined()
     wrapper.unmount()
   })
 

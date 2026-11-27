@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast'
 import { useRestoreFocus } from '@/composables/useRestoreFocus'
 import { useClockStore } from '@/stores/clock'
 import type {
+  CreateRecurrenceRequest,
   CreateTransactionRequest,
   TransactionDetailDto,
   TransactionType,
@@ -12,6 +13,7 @@ import type {
 } from '@/types/api'
 import { formatDate } from '@/utils/format'
 import { toAppError } from '@/utils/problem'
+import { recurrenceService } from '@/modules/recurrence/services/recurrenceService'
 import { transactionService } from '../services/transactionService'
 import { TRANSACTION_FORM_FIELDS } from '../validation'
 import TransactionForm from './TransactionForm.vue'
@@ -27,7 +29,8 @@ const props = withDefaults(
 )
 
 const visible = defineModel<boolean>('visible', { required: true })
-const emit = defineEmits<{ saved: [transaction: TransactionDetailDto] }>()
+/** `null` quando foi criada uma receita fixa (recorrência): não há uma única movimentação para devolver. */
+const emit = defineEmits<{ saved: [transaction: TransactionDetailDto | null] }>()
 
 const toast = useToast()
 const clock = useClockStore()
@@ -48,6 +51,30 @@ watch(visible, (value) => {
     fieldErrors.value = {}
   }
 })
+
+async function onSubmitRecurring(request: CreateRecurrenceRequest): Promise<void> {
+  loading.value = true
+  errorMessage.value = null
+  fieldErrors.value = {}
+  try {
+    await recurrenceService.create(request)
+    visible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Receita fixa criada',
+      detail: 'Ela será lançada todo mês. Para encerrar, abra uma movimentação dela e use "Encerrar repetição".',
+      life: 6000,
+    })
+    emit('saved', null)
+  } catch (error) {
+    const appError = toAppError(error)
+    // Campos da recorrência (startDate, …) são mostrados no aviso: o formulário usa `transactionDate`.
+    fieldErrors.value = appError.fieldErrors
+    errorMessage.value = appError.message
+  } finally {
+    loading.value = false
+  }
+}
 
 async function onSubmit(request: CreateTransactionRequest | UpdateTransactionRequest): Promise<void> {
   loading.value = true
@@ -100,6 +127,7 @@ async function onSubmit(request: CreateTransactionRequest | UpdateTransactionReq
       :error-message="errorMessage"
       :field-errors="fieldErrors"
       @submit="onSubmit"
+      @submit-recurring="onSubmitRecurring"
       @cancel="visible = false"
     />
   </Dialog>
